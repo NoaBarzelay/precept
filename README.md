@@ -60,11 +60,24 @@ over compiled policy JSON; it never `eval`s a generated rule.
 
 ## Status
 
-Early build. Working today: the typed spine (`models.py`), the markdown catalog,
-the COMPILE step, the **stdlib enforcement matcher** (single-call + trajectory),
-the verified Claude Code hook adapter, and the `precept` CLI review gate — all
-tested. Next: DETECT (correction → lesson), Phase-0 bootstrap (import your existing
-setup), `install`/`uninstall`, the knowledge index, and the eval harness.
+Early but the core loop is real and tested (22 tests). Working today:
+
+```bash
+precept install                 # wire Precept's hooks into ~/.claude (idempotent, backed up)
+precept detect <transcript>     # classify a session, mint a PENDING lesson from a correction
+precept list                    # see the catalog
+precept keep <id>               # the human gate: PENDING -> ACTIVE, recompiles the enforcer
+# ...next session, the PreToolUse/Stop hook BLOCKS the thing you corrected.
+```
+
+Shipped: the typed spine (`models.py`), the markdown catalog, COMPILE, the
+**stdlib enforcement matcher** (single-call + trajectory), the verified Claude
+Code hook adapter, DETECT (Haiku structured extraction, abstain-aware, fail-closed),
+`install`/`uninstall`, and the `precept` CLI review gate.
+
+Next: Phase-0 bootstrap (import your existing `~/.claude` + notes as seed rules),
+COMPILE matcher-synthesis (lesson -> enforcing Policy), the knowledge index
+(FTS5 first), and the eval harness.
 
 ## Develop
 
