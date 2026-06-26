@@ -137,14 +137,21 @@ def reindex() -> None:
 
 @app.command()
 def install() -> None:
-    """Register Precept's hooks in ~/.claude/settings.json. [P1 — not yet implemented]"""
-    console.print("[dim]install: marker-based, atomic settings.json mutation is the next build step.[/dim]")
+    """Register Precept's hooks in ~/.claude/settings.json (idempotent, atomic, backed up)."""
+    from . import install as _install
+
+    p = _install.install_to_file()
+    console.print(f"[green]Installed[/green] Precept hooks -> {p} (backup at {p.name}.bak)")
+    console.print("  PreToolUse, Stop, SessionEnd are now wired. Restart any open Claude Code session.")
 
 
 @app.command()
 def uninstall() -> None:
-    """Remove Precept's hooks from ~/.claude/settings.json. [P1 — not yet implemented]"""
-    console.print("[dim]uninstall: pairs with install (next build step).[/dim]")
+    """Remove Precept's hooks from ~/.claude/settings.json (leaves other settings intact)."""
+    from . import install as _install
+
+    p = _install.uninstall_from_file()
+    console.print(f"[yellow]Uninstalled[/yellow] Precept hooks from {p}.")
 
 
 if __name__ == "__main__":  # pragma: no cover
