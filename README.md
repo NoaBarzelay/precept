@@ -68,6 +68,7 @@ precept bootstrap               # seed from your existing setup (permission rule
 precept detect <transcript>     # classify a session, mint a PENDING lesson from a correction
 precept list                    # see the catalog
 precept keep <id>               # the human gate: PENDING -> ACTIVE; deterministic ones auto-compile
+precept evals                   # the deterministic scorecard (100% recall, 0 false-blocks)
 # ...next session, the PreToolUse/Stop hook BLOCKS the thing you corrected.
 ```
 
@@ -82,8 +83,24 @@ Plus **Phase-0 bootstrap** (`precept bootstrap`): your `permissions.deny` rules
 compile straight into HARD policies, and your CLAUDE.md directives import as soft
 lessons to review — so Precept boots already knowing your setup.
 
+## Evals (the part that makes the number trustworthy)
+
+`precept evals` runs a **deterministic, zero-variance confusion matrix** over a
+committed golden set of enforcement cases, and CI gates it (`--strict`):
+
+```
+recall (violations caught):   100%  (TP=5 FN=0)
+false-block rate (compliant):   0%  (FP=0 TN=7)
+```
+
+That's the honest claim — *100% of the violations it has a rule for, with no
+false-blocks on compliant calls* — not a single dramatic before/after number. The
+live before/after (Tier-2) is reported as a **paired, multi-trial delta with a 95%
+CI** (`evals/live.py`), because infra noise alone swings agentic eval scores by
+several points.
+
 Next: the knowledge index (FTS5 first), judgment-rule (`type: prompt`) hooks, and
-the eval harness.
+the live Tier-2 agent runs.
 
 ## Develop
 

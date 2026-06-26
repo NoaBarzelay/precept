@@ -1,0 +1,98 @@
+[
+  {
+    "id": "npm-violation",
+    "description": "agent runs npm install after the user said use pnpm",
+    "kind": "pretooluse",
+    "policies": [{"id": "npm", "lesson_id": "use-pnpm", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm, not npm.", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm install left-pad"}},
+    "expect": "block"
+  },
+  {
+    "id": "pnpm-compliant",
+    "description": "near-miss: pnpm install must NOT be blocked by the npm rule",
+    "kind": "pretooluse",
+    "policies": [{"id": "npm", "lesson_id": "use-pnpm", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm, not npm.", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "pnpm install left-pad"}},
+    "expect": "allow"
+  },
+  {
+    "id": "npm-run-build-ok",
+    "description": "npm run build is not 'npm install' — must be allowed",
+    "kind": "pretooluse",
+    "policies": [{"id": "npm", "lesson_id": "use-pnpm", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm, not npm.", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm run build"}},
+    "expect": "allow"
+  },
+  {
+    "id": "rm-rf-violation",
+    "description": "destructive rm -rf must be blocked",
+    "kind": "pretooluse",
+    "policies": [{"id": "rmrf", "lesson_id": "no-rmrf", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Refusing rm -rf.", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\brm -rf"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/data"}},
+    "expect": "block"
+  },
+  {
+    "id": "rm-file-ok",
+    "description": "a plain rm is allowed",
+    "kind": "pretooluse",
+    "policies": [{"id": "rmrf", "lesson_id": "no-rmrf", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Refusing rm -rf.", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\brm -rf"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "rm stale.txt"}},
+    "expect": "allow"
+  },
+  {
+    "id": "read-env-violation",
+    "description": "reading a .env secret must be blocked",
+    "kind": "pretooluse",
+    "policies": [{"id": "env", "lesson_id": "no-secrets", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Don't read secrets.", "match": {"tool": "Read", "conditions": [{"field": "file_path", "op": "regex", "value": "\\.env"}]}}],
+    "call": {"tool_name": "Read", "tool_input": {"file_path": ".env"}},
+    "expect": "block"
+  },
+  {
+    "id": "read-source-ok",
+    "description": "reading normal source is allowed",
+    "kind": "pretooluse",
+    "policies": [{"id": "env", "lesson_id": "no-secrets", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Don't read secrets.", "match": {"tool": "Read", "conditions": [{"field": "file_path", "op": "regex", "value": "\\.env"}]}}],
+    "call": {"tool_name": "Read", "tool_input": {"file_path": "src/main.py"}},
+    "expect": "allow"
+  },
+  {
+    "id": "edit-lockfile-violation",
+    "description": "hand-editing a lockfile must be blocked",
+    "kind": "pretooluse",
+    "policies": [{"id": "lock", "lesson_id": "no-lockfile-edits", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Don't hand-edit lockfiles.", "match": {"tool": "Edit", "conditions": [{"field": "file_path", "op": "regex", "value": "(pnpm-lock|package-lock|poetry\\.lock|uv\\.lock)"}]}}],
+    "call": {"tool_name": "Edit", "tool_input": {"file_path": "pnpm-lock.yaml", "old_string": "a", "new_string": "b"}},
+    "expect": "block"
+  },
+  {
+    "id": "edit-source-ok",
+    "description": "editing normal source is allowed",
+    "kind": "pretooluse",
+    "policies": [{"id": "lock", "lesson_id": "no-lockfile-edits", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Don't hand-edit lockfiles.", "match": {"tool": "Edit", "conditions": [{"field": "file_path", "op": "regex", "value": "(pnpm-lock|package-lock|poetry\\.lock|uv\\.lock)"}]}}],
+    "call": {"tool_name": "Edit", "tool_input": {"file_path": "src/app.ts", "old_string": "a", "new_string": "b"}},
+    "expect": "allow"
+  },
+  {
+    "id": "claim-success-without-tests",
+    "description": "agent claims it works without ever running tests -> Stop blocks",
+    "kind": "stop",
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}}],
+    "expect": "block"
+  },
+  {
+    "id": "claim-success-with-tests",
+    "description": "tests actually ran before the success claim -> allowed",
+    "kind": "stop",
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}}, {"message": {"role": "assistant", "content": [{"type": "text", "text": "All tests passing, done."}]}}],
+    "expect": "allow"
+  },
+  {
+    "id": "no-success-claim",
+    "description": "no success claim -> nothing to gate, allowed",
+    "kind": "stop",
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "I made a few edits to the parser."}]}}],
+    "expect": "allow"
+  }
+]

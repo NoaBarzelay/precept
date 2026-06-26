@@ -132,15 +132,13 @@ def _last_assistant_text(entries: list[dict[str, Any]]) -> str:
     return ""
 
 
-def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None = None) -> dict:
-    """Trajectory rules: block stopping if a required precondition never happened
-    while the agent is claiming success."""
-    pols = policies if policies is not None else load_compiled()
-    traj = [p for p in pols if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory"]
+def evaluate_stop_entries(entries: list[dict[str, Any]], policies: list[dict[str, Any]]) -> dict:
+    """Pure trajectory evaluation over already-parsed transcript entries (also used
+    by the eval harness, which supplies inline transcripts)."""
+    traj = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory"]
     if not traj:
         return cc.stop_allow()
 
-    entries = cc.read_transcript(event.get("transcript_path", ""))
     calls = _transcript_tool_calls(entries)
     final = _last_assistant_text(entries)
 
@@ -153,3 +151,11 @@ def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None =
         if claiming and not satisfied:
             return cc.stop_block(p.get("message", "A required step has not been completed."))
     return cc.stop_allow()
+
+
+def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None = None) -> dict:
+    """Trajectory rules: block stopping if a required precondition never happened
+    while the agent is claiming success. Reads the transcript from the event."""
+    pols = policies if policies is not None else load_compiled()
+    entries = cc.read_transcript(event.get("transcript_path", ""))
+    return evaluate_stop_entries(entries, pols)

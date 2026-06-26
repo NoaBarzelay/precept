@@ -152,6 +152,27 @@ def compile_cmd() -> None:
 
 
 @app.command()
+def evals(strict: bool = typer.Option(False, help="exit nonzero on any miss/false-block (CI gate)")) -> None:
+    """Run the Tier-1 deterministic enforcement eval over the committed golden set."""
+    from .evals import harness
+
+    rep, rows = harness.run_golden()
+    t = Table("case", "expect", "blocked", "outcome")
+    for r in rows:
+        t.add_row(r["id"], r["expect"], "yes" if r["blocked"] else "no", r["outcome"])
+    console.print(t)
+    clean = rep.recall == 1.0 and rep.false_block_rate == 0.0
+    console.print(f"\n[bold]Tier-1 enforcement eval[/bold] — {rep.n} committed cases (deterministic, zero variance):")
+    console.print(f"  recall (violations caught):   {rep.recall:.0%}  [dim](TP={rep.tp} FN={rep.fn})[/dim]")
+    console.print(f"  false-block rate (compliant): {rep.false_block_rate:.0%}  [dim](FP={rep.fp} TN={rep.tn})[/dim]")
+    console.print(f"  precision: {rep.precision:.0%}   accuracy: {rep.accuracy:.0%}")
+    msg = "100% of violations blocked, 0 false-blocks on the deterministic subset."
+    console.print(f"  [green]{msg}[/green]" if clean else "  [red]Regression — see outcomes above.[/red]")
+    if strict and not clean:
+        raise typer.Exit(1)
+
+
+@app.command()
 def doctor() -> None:
     """Print resolved paths + environment (and check the iCloud-safety invariant)."""
     console.print(f"precept {__version__}  (python {sys.version.split()[0]})")
