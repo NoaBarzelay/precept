@@ -70,14 +70,16 @@ precept keep <id>               # the human gate: PENDING -> ACTIVE, recompiles 
 # ...next session, the PreToolUse/Stop hook BLOCKS the thing you corrected.
 ```
 
-Shipped: the typed spine (`models.py`), the markdown catalog, COMPILE, the
-**stdlib enforcement matcher** (single-call + trajectory), the verified Claude
-Code hook adapter, DETECT (Haiku structured extraction, abstain-aware, fail-closed),
-`install`/`uninstall`, and the `precept` CLI review gate.
+The whole loop is wired: **correct → DETECT (mint pending) → keep (auto-synthesize
+a matcher) → ENFORCE (block it next session).** Shipped: the typed spine
+(`models.py`), the markdown catalog, COMPILE + **matcher synthesis** (lesson →
+enforcing Policy, fail-closed), the **stdlib enforcement matcher** (single-call +
+trajectory), the verified Claude Code hook adapter, DETECT (Haiku structured
+extraction, abstain-aware), `install`/`uninstall`, and the `precept` CLI review gate.
 
 Next: Phase-0 bootstrap (import your existing `~/.claude` + notes as seed rules),
-COMPILE matcher-synthesis (lesson -> enforcing Policy), the knowledge index
-(FTS5 first), and the eval harness.
+the knowledge index (FTS5 first), judgment-rule (`type: prompt`) hooks, and the
+eval harness.
 
 ## Develop
 

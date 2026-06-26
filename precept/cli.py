@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__, catalog, compile as _compile, paths
-from .models import Status
+from .models import Determinism, Status
 
 app = typer.Typer(add_completion=False, help="Policy-as-code for your coding agent.")
 console = Console()
@@ -65,13 +65,38 @@ def why(lesson_id: str) -> None:
 
 @app.command()
 def keep(lesson_id: str) -> None:
-    """Keep a pending lesson -> it becomes ACTIVE and is enforced."""
+    """Keep a pending lesson -> ACTIVE. Deterministic ones are compiled into an
+    enforcing policy (matcher synthesis); the rest stay soft."""
     le = _find(lesson_id)
     le.status = Status.ACTIVE
     le.signals.human_kept = True
+    if not le.policies and le.determinism != Determinism.STYLISTIC:
+        from . import synthesize  # lazy: only the keep path needs the SDK
+
+        try:
+            synthesize.compile_lesson(le)
+        except Exception:
+            pass  # fail closed: kept as soft, no junk policy
     catalog.write(le)
     n = _compile.compile_all()
-    console.print(f"[green]Kept[/green] {le.id}. Recompiled {n} active policies.")
+    tier = "HARD (enforced)" if le.policies else "soft (steered)"
+    console.print(f"[green]Kept[/green] {le.id} -> {tier}. Recompiled {n} active policies.")
+
+
+@app.command()
+def synthesize(lesson_id: str) -> None:
+    """(Re)compile a lesson into an enforcing policy via matcher synthesis."""
+    from . import synthesize as _syn
+
+    le = _find(lesson_id)
+    le.policies = []
+    _syn.compile_lesson(le)
+    catalog.write(le)
+    n = _compile.compile_all()
+    if le.policies:
+        console.print(f"[green]Synthesized[/green] a HARD policy for {le.id}. Recompiled {n}.")
+    else:
+        console.print(f"[yellow]Could not compile[/yellow] {le.id} to a hard rule — kept soft.")
 
 
 @app.command()
