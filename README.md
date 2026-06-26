@@ -64,9 +64,10 @@ Early but the core loop is real and tested (22 tests). Working today:
 
 ```bash
 precept install                 # wire Precept's hooks into ~/.claude (idempotent, backed up)
+precept bootstrap               # seed from your existing setup (permission rules + CLAUDE.md)
 precept detect <transcript>     # classify a session, mint a PENDING lesson from a correction
 precept list                    # see the catalog
-precept keep <id>               # the human gate: PENDING -> ACTIVE, recompiles the enforcer
+precept keep <id>               # the human gate: PENDING -> ACTIVE; deterministic ones auto-compile
 # ...next session, the PreToolUse/Stop hook BLOCKS the thing you corrected.
 ```
 
@@ -77,9 +78,12 @@ enforcing Policy, fail-closed), the **stdlib enforcement matcher** (single-call 
 trajectory), the verified Claude Code hook adapter, DETECT (Haiku structured
 extraction, abstain-aware), `install`/`uninstall`, and the `precept` CLI review gate.
 
-Next: Phase-0 bootstrap (import your existing `~/.claude` + notes as seed rules),
-the knowledge index (FTS5 first), judgment-rule (`type: prompt`) hooks, and the
-eval harness.
+Plus **Phase-0 bootstrap** (`precept bootstrap`): your `permissions.deny` rules
+compile straight into HARD policies, and your CLAUDE.md directives import as soft
+lessons to review — so Precept boots already knowing your setup.
+
+Next: the knowledge index (FTS5 first), judgment-rule (`type: prompt`) hooks, and
+the eval harness.
 
 ## Develop
 

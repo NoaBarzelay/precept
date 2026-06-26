@@ -114,6 +114,23 @@ def delete(lesson_id: str, hard: bool = typer.Option(False, help="remove the car
 
 
 @app.command()
+def bootstrap() -> None:
+    """Import your existing ~/.claude setup (permission rules + CLAUDE.md) as PENDING lessons."""
+    from . import bootstrap as _bootstrap
+
+    minted = _bootstrap.bootstrap()
+    if not minted:
+        console.print("[dim]Nothing new to import (no ~/.claude rules found, or already imported).[/dim]")
+        return
+    hard = sum(1 for le in minted if le.policies)
+    console.print(
+        f"[green]Imported[/green] {len(minted)} pending lessons "
+        f"({hard} ready-to-enforce from permission rules, {len(minted) - hard} soft from CLAUDE.md)."
+    )
+    console.print("Review: [bold]precept list[/bold] · keep: [bold]precept keep <id>[/bold]")
+
+
+@app.command()
 def detect(transcript: str) -> None:
     """Classify a session transcript; mint any correction as a PENDING lesson."""
     from . import detect as _detect
