@@ -21,6 +21,8 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
 precept = "precept.cli:app"
+precept-hook-pretooluse = "precept.hooks:pretooluse_main"
+precept-hook-stop = "precept.hooks:stop_main"
 
 [build-system]
 requires = ["hatchling"]
