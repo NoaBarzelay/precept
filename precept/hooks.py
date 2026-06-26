@@ -22,10 +22,38 @@ def pretooluse_main() -> int:
 
 def stop_main() -> int:
     try:
-        cc.emit(enforce.evaluate_stop(cc.read_event()))
+        event = cc.read_event()
+        cc.emit(enforce.evaluate_stop(event))
+        _spawn_detect(event)  # also kick DETECT off the Stop event, detached
     except Exception:
         pass  # fail open
     return 0
+
+
+def detect_main() -> int:
+    """SessionEnd entrypoint: kick DETECT off, detached, and return immediately."""
+    try:
+        _spawn_detect(cc.read_event())
+    except Exception:
+        pass
+    return 0
+
+
+def _spawn_detect(event: dict) -> None:
+    """Fire-and-forget: run DETECT (an LLM call) in a detached process so the hook
+    never blocks the user's session on classification."""
+    import subprocess
+    import sys
+
+    tp = event.get("transcript_path")
+    if not tp:
+        return
+    subprocess.Popen(
+        [sys.executable, "-m", "precept", "detect", tp],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

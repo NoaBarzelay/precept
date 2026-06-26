@@ -88,6 +88,20 @@ def delete(lesson_id: str, hard: bool = typer.Option(False, help="remove the car
     console.print(f"[yellow]{'Removed' if hard else 'Archived'}[/yellow] {le.id}. Recompiled {n} active policies.")
 
 
+@app.command()
+def detect(transcript: str) -> None:
+    """Classify a session transcript; mint any correction as a PENDING lesson."""
+    from . import detect as _detect
+
+    minted = _detect.detect_from_transcript(transcript, session=transcript)
+    if not minted:
+        console.print("[dim]No new correction detected (or already in catalog).[/dim]")
+        return
+    for le in minted:
+        console.print(f"[green]Minted PENDING[/green] {le.id}: {le.trigger}")
+    console.print("Review: [bold]precept why <id>[/bold] · keep: [bold]precept keep <id>[/bold]")
+
+
 @app.command("compile")
 def compile_cmd() -> None:
     """Recompile the enforcement cache from the catalog."""
