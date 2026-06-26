@@ -1,0 +1,30 @@
+[project]
+name = "precept"
+version = "0.1.0"
+description = "Policy-as-code for your coding agent: compile the corrections you give Claude Code into deterministic, pre-completion guardrails plus a portable, auditable catalog you can see, query, and veto."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Noa Barzelay" }]
+keywords = ["claude-code", "hooks", "guardrails", "policy-as-code", "agent-reliability", "evals"]
+
+dependencies = [
+    "anthropic>=0.40",   # DETECT: classify whether the user corrected the agent
+    "pydantic>=2.0",     # the typed spine: Lesson + Policy IR
+    "typer>=0.12",       # the catalog CLI (list/show/why/keep/delete)
+    "pyyaml>=6.0",       # markdown-card frontmatter
+]
+
+[project.optional-dependencies]
+tui = ["textual>=0.60"]   # `precept review` — keep/veto/why over the catalog
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+precept = "precept.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["precept"]

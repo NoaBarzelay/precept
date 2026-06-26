@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets / local config
+.env
+.env.local
+
+# The user's real catalog is private; ship only the schema + examples, never a populated catalog.
+catalog/*.md
+!catalog/README.md
+!catalog/example-*.md
