@@ -246,6 +246,18 @@ class Lesson(BaseModel):
 # ---------------------------------------------------------------------------
 # DETECT extraction wrapper (Jason Liu's "Maybe" pattern + leading reasoning)
 # ---------------------------------------------------------------------------
+class Note(BaseModel):
+    """A KNOWLEDGE artifact: a freeform note you recall later ('what do I know about
+    X'). Markdown is the source of truth; the FTS index is derived and rebuildable."""
+
+    id: str
+    created: date
+    title: str
+    body: str
+    tags: list[str] = Field(default_factory=list)
+    source: str = ""
+
+
 class ExtractedLesson(BaseModel):
     """What the classifier emits for a single salient correction. The COMPILE
     step turns this into a Lesson + Policies (assigning id/status/signals)."""

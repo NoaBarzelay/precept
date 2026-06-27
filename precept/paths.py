@@ -32,6 +32,11 @@ def catalog_dir() -> Path:
     return precept_home() / "catalog"
 
 
+def notes_dir() -> Path:
+    """Markdown knowledge notes (the source of truth for KNOWLEDGE artifacts)."""
+    return precept_home() / "notes"
+
+
 def state_dir() -> Path:
     """Derived/disposable state: the index .db, compiled policy cache, cursors.
     MUST be local (XDG_STATE_HOME or ~/.local/state), never the synced vault."""
@@ -56,5 +61,5 @@ def claude_home() -> Path:
 
 
 def ensure_dirs() -> None:
-    for d in (precept_home(), catalog_dir(), state_dir()):
+    for d in (precept_home(), catalog_dir(), notes_dir(), state_dir()):
         d.mkdir(parents=True, exist_ok=True)

@@ -193,9 +193,39 @@ def version() -> None:
 
 
 @app.command()
+def note(title: str, body: str = typer.Option("", help="note body (or pipe via stdin)"),
+         tag: list[str] = typer.Option([], help="repeatable")) -> None:
+    """Capture a knowledge note (markdown source of truth + indexed for recall)."""
+    from . import knowledge
+
+    text = body or (sys.stdin.read().strip() if not sys.stdin.isatty() else "")
+    n = knowledge.add(title, text or title, tags=list(tag))
+    console.print(f"[green]Noted[/green] {n.id}" + (f" [{', '.join(n.tags)}]" if n.tags else ""))
+    console.print('Recall with: [bold]precept recall "<query>"[/bold]')
+
+
+@app.command()
+def recall(query: str, tag: str = typer.Option(None), limit: int = typer.Option(8)) -> None:
+    """Recall knowledge notes by keyword (BM25), optionally filtered by tag."""
+    from . import knowledge
+
+    hits = knowledge.search(query, limit=limit, tag=tag)
+    if not hits:
+        console.print("[dim]No matching notes.[/dim]")
+        return
+    for n in hits:
+        meta = f"{n.id}" + (f" · {', '.join(n.tags)}" if n.tags else "")
+        console.print(f"[bold]{n.title}[/bold]  [dim]{meta}[/dim]")
+        console.print(f"  {n.body[:180]}")
+
+
+@app.command()
 def reindex() -> None:
-    """Rebuild the knowledge index from markdown notes. [P2 — not yet implemented]"""
-    console.print("[dim]reindex: knowledge index lands in P2 (FTS5 first, sqlite-vec if a recall eval demands it).[/dim]")
+    """Rebuild the knowledge index from the markdown notes (proves it's derived)."""
+    from . import knowledge
+
+    n = knowledge.reindex()
+    console.print(f"Rebuilt the knowledge index from markdown: {n} notes -> {paths.index_db()}")
 
 
 @app.command()

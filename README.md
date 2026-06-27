@@ -68,6 +68,7 @@ precept bootstrap               # seed from your existing setup (permission rule
 precept detect <transcript>     # classify a session, mint a PENDING lesson from a correction
 precept list                    # see the catalog
 precept keep <id>               # the human gate: PENDING -> ACTIVE; deterministic ones auto-compile
+precept note "X" --body "..."   # capture a knowledge note; precept recall "query" to find it later
 precept evals                   # the deterministic scorecard (100% recall, 0 false-blocks)
 # ...next session, the PreToolUse/Stop hook BLOCKS the thing you corrected.
 ```
@@ -104,7 +105,14 @@ gate** — the gate is deterministic (our hook fires every time), and a cheap Ha
 `{ok, reason}` call decides if the rule was met, lazy-loaded so the deterministic
 path stays stdlib, and **fail-open** (a missing key never wedges a session).
 
-Next: the knowledge index (FTS5 first) and the live Tier-2 agent runs.
+Knowledge recall ships too: `precept note` / `precept recall` store notes as
+markdown (source of truth) and search them with SQLite **FTS5/BM25** + tag filtering.
+The index lives on a local disk (never the synced vault) and is fully rebuildable
+from the markdown (`precept reindex`). Semantic/vector recall (sqlite-vec) is a
+deliberate *later* add — only if a Recall@k eval shows keyword search missing things.
+
+Next: the live Tier-2 agent runs, and the P4 extras (output styles, slash commands,
+MCP config, permission profiles).
 
 ## Develop
 
