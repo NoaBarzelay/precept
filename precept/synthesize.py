@@ -130,10 +130,34 @@ def synthesize_policy(lesson: Lesson, client: Any | None = None) -> Policy | Non
         return None  # fail closed: no policy rather than a wrong one
 
 
+def _judgment_policy(lesson: Lesson) -> Policy:
+    """Build a Stop judgment policy directly from the lesson (no LLM needed): the
+    gate is deterministic, the verdict prompt is the rule itself (auditable)."""
+    return Policy(
+        id=f"{lesson.id}-p1",
+        lesson_id=lesson.id,
+        enforcement_tier=EnforcementTier.HARD,
+        hook_event=HookEvent.STOP,
+        check_kind=CheckKind.JUDGMENT,
+        decision=Decision.DENY,
+        message=lesson.what_to_do_instead,
+        judgment_prompt=(
+            f"Requirement: {lesson.what_to_do_instead}. "
+            f"(The user flagged this because: {lesson.what_was_wrong}.) "
+            f"Has the agent satisfied this requirement in its final output? "
+            f"ok=false only if it clearly has not."
+        ),
+    )
+
+
 def compile_lesson(lesson: Lesson, client: Any | None = None) -> Lesson:
-    """Attach a synthesized policy if one is possible and none exists yet.
-    Downgrades determinism to STYLISTIC (soft) when nothing could be compiled."""
+    """Attach an enforcing policy if one is possible and none exists yet.
+    Judgment lessons get a Stop verdict gate; deterministic ones get a synthesized
+    matcher; anything that won't compile is honestly downgraded to soft."""
     if lesson.policies:
+        return lesson
+    if lesson.determinism == Determinism.JUDGMENT:
+        lesson.policies = [_judgment_policy(lesson)]
         return lesson
     policy = synthesize_policy(lesson, client)
     if policy is not None:

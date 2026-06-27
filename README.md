@@ -99,8 +99,12 @@ live before/after (Tier-2) is reported as a **paired, multi-trial delta with a 9
 CI** (`evals/live.py`), because infra noise alone swings agentic eval scores by
 several points.
 
-Next: the knowledge index (FTS5 first), judgment-rule (`type: prompt`) hooks, and
-the live Tier-2 agent runs.
+Judgment rules now enforce too: a judgment lesson compiles to a Stop **verdict
+gate** — the gate is deterministic (our hook fires every time), and a cheap Haiku
+`{ok, reason}` call decides if the rule was met, lazy-loaded so the deterministic
+path stays stdlib, and **fail-open** (a missing key never wedges a session).
+
+Next: the knowledge index (FTS5 first) and the live Tier-2 agent runs.
 
 ## Develop
 

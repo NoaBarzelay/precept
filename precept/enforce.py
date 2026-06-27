@@ -132,17 +132,33 @@ def _last_assistant_text(entries: list[dict[str, Any]]) -> str:
     return ""
 
 
+def _judge(prompt: str, context: str):
+    """Lazy bridge to the judgment model — keeps the deterministic path stdlib;
+    the anthropic SDK is imported only when a judgment policy is actually in play."""
+    from . import judge
+
+    return judge.verdict(prompt, context)
+
+
+def _judgment_context(final: str, calls: list[tuple[str, dict[str, Any]]]) -> str:
+    tools = "; ".join(f"{n}({json.dumps(i)[:120]})" for n, i in calls[-10:]) or "(none)"
+    return f"Final assistant message:\n{final}\n\nRecent tool calls: {tools}"
+
+
 def evaluate_stop_entries(entries: list[dict[str, Any]], policies: list[dict[str, Any]]) -> dict:
-    """Pure trajectory evaluation over already-parsed transcript entries (also used
-    by the eval harness, which supplies inline transcripts)."""
+    """Evaluate Stop rules over already-parsed transcript entries (also used by the
+    eval harness, which supplies inline transcripts). Two kinds:
+      - trajectory: deterministic ("X must have happened before the success claim")
+      - judgment:   an LLM {ok,reason} verdict at the gate ("no stub code left")."""
     traj = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory"]
-    if not traj:
+    judg = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "judgment"]
+    if not traj and not judg:
         return cc.stop_allow()
 
     calls = _transcript_tool_calls(entries)
     final = _last_assistant_text(entries)
 
-    for p in traj:
+    for p in traj:  # deterministic first (cheap, no model call)
         spec = p.get("trajectory") or {}
         requires = spec.get("requires")
         claim = spec.get("claim_pattern", "")
@@ -150,6 +166,14 @@ def evaluate_stop_entries(entries: list[dict[str, Any]], policies: list[dict[str
         claiming = bool(claim) and _check(final, "regex", claim)
         if claiming and not satisfied:
             return cc.stop_block(p.get("message", "A required step has not been completed."))
+
+    if judg:  # judgment verdicts (fail open: a None verdict never blocks)
+        context = _judgment_context(final, calls)
+        for p in judg:
+            v = _judge(p.get("judgment_prompt", ""), context)
+            if v is not None and not v.ok:
+                return cc.stop_block(p.get("message") or v.reason or "A required standard was not met.")
+
     return cc.stop_allow()
 
 
