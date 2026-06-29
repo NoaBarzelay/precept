@@ -60,7 +60,12 @@ class Report:
 def _blocked(case: dict[str, Any]) -> bool:
     pols = case["policies"]
     if case.get("kind") == "stop":
-        out = enforce.evaluate_stop_entries(case["transcript"], pols)
+        # Claim/standard verdicts are AI in production; the golden set stays
+        # deterministic by INJECTING a fake verdict map per case (zero LLM). Cases
+        # whose deterministic gates yield no questions never reach the verdict_fn.
+        injected = case.get("injected_verdicts", {})
+        vf = (lambda questions, context: injected)
+        out = enforce.evaluate_stop_entries(case["transcript"], pols, verdict_fn=vf)
         return out.get("decision") == "block"
     out = enforce.evaluate_pretooluse(case["call"], pols)
     return out["hookSpecificOutput"]["permissionDecision"] in ("deny", "ask")

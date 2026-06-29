@@ -73,26 +73,45 @@
   },
   {
     "id": "claim-success-without-tests",
-    "description": "agent claims it works without ever running tests -> Stop blocks",
+    "description": "tests never ran; AI verdict says the agent IS claiming success -> Stop blocks",
     "kind": "stop",
-    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}}}],
     "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}}],
+    "injected_verdicts": {"tests": {"ok": false, "reason": "claiming success without tests"}},
     "expect": "block"
   },
   {
     "id": "claim-success-with-tests",
-    "description": "tests actually ran before the success claim -> allowed",
+    "description": "tests actually ran -> requirement met, no question generated, allowed (free)",
     "kind": "stop",
-    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}}}],
     "transcript": [{"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}}, {"message": {"role": "assistant", "content": [{"type": "text", "text": "All tests passing, done."}]}}],
     "expect": "allow"
   },
   {
     "id": "no-success-claim",
-    "description": "no success claim -> nothing to gate, allowed",
+    "description": "same unmet requirement as the block case, but the AI verdict says NOT claiming complete -> allowed",
     "kind": "stop",
-    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}, "claim_pattern": "(?i)\\b(it works|all set|done|passing|fixed)\\b"}}],
+    "policies": [{"id": "tests", "lesson_id": "tests-first", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test|go test"}]}}}],
     "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "I made a few edits to the parser."}]}}],
+    "injected_verdicts": {"tests": {"ok": true}},
     "expect": "allow"
+  },
+  {
+    "id": "judgment-not-relevant-skips",
+    "description": "no-stub judgment with applies_when=Edit, but no Edit this turn -> skipped for free, allowed",
+    "kind": "stop",
+    "policies": [{"id": "nostub", "lesson_id": "no-stubs", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "judgment", "decision": "deny", "message": "Don't leave stub code.", "judgment_prompt": "no stub/TODO code left", "applies_when": {"tool": "Edit", "conditions": []}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "src/main.py"}}]}}, {"message": {"role": "assistant", "content": [{"type": "text", "text": "Reviewed the parser."}]}}],
+    "expect": "allow"
+  },
+  {
+    "id": "judgment-relevant-blocks",
+    "description": "no-stub judgment with applies_when=Edit, an Edit happened, AI verdict fails it -> blocked",
+    "kind": "stop",
+    "policies": [{"id": "nostub", "lesson_id": "no-stubs", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "judgment", "decision": "deny", "message": "Don't leave stub code.", "judgment_prompt": "no stub/TODO code left", "applies_when": {"tool": "Edit", "conditions": []}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "parser.py", "old_string": "a", "new_string": "# TODO"}}]}}, {"message": {"role": "assistant", "content": [{"type": "text", "text": "Left a TODO stub."}]}}],
+    "injected_verdicts": {"nostub": {"ok": false, "reason": "stub left"}},
+    "expect": "block"
   }
 ]
