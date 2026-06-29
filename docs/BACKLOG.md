@@ -92,5 +92,61 @@ turn, only when something relevant happened.
 > **#4 + #5 share one mechanism:** a single consolidated Stop AI verdict call that handles
 > both "is the agent claiming success" (trajectory) and "are the standards met" (judgment).
 
+### 6. Rule governance: decay / supersede / conflict-detection  (deferred, Noa 2026-06-29)
+Part of the self-improvement pillar; deferred but captured so it's not missed.
+- **decay:** archive rules that never fire (fire_count stays 0 past a threshold), proposed
+  for retirement.
+- **supersede:** a newer rule replaces an older one (old marked archived).
+- **conflict-detection:** detect two rules that contradict (the expensive LLM-judge piece).
+
+---
+
+## Decided rule work — queued for the NEXT background build (after the Stop-verdict build lands)
+Owner decisions, 2026-06-29. Build these as a second multi-agent pipeline once
+wu9mkvty7 (the #4/#5 Stop-verdict build) is merged, to avoid two agents editing the same
+files concurrently.
+
+### A. `rewrite` is the default for substitution corrections
+When a correction is a clean substitution ("use X not Y", Y -> X in the same tool field),
+synthesize a `rewrite` policy (decision=rewrite, rewrite_to={field: corrected value}) by
+DEFAULT, not deny. Deny only when there is no clean substitution. enforce + models already
+support rewrite; the change is in `synthesize.py` (prefer rewrite for substitutions).
+
+### B. Compile clean bans to native `permissions.deny`
+For clean tool+path/domain bans that need NO argument logic (`Read(.env)`, `WebFetch(domain:..)`,
+whole-tool bans), compile to a `permissions.deny` entry in settings.json instead of a
+PreToolUse hook. Auto-pick by shape: clean ban -> permission rule; command-argument logic
+(regex on a Bash command) -> hook (permission Bash-arg patterns are bypassable, per CC docs).
+Touches: `synthesize.py` (classify shape), `install.py`/`compile.py` (write a marker-managed
+permissions block), enforce unchanged (CC enforces permission rules natively).
+
+### C. Scope-aware enforcement, default GLOBAL
+Rules fire only within their scope, using the event's `cwd` (and detected language). DEFAULT
+scope = **global** (fires everywhere) unless the correction specifies narrower (this repo /
+this language). repo-scope stores the repo root; fire only when cwd is inside it. Touches:
+`models.py` (a scope_value alongside the Scope enum), `enforce.py` (filter by cwd before
+matching), `compile.py` (carry scope into policies.json), `detect.py`/`synthesize.py` (set
+scope; default global).
+
+### D. UserPromptSubmit rules (third hard surface)
+Add UserPromptSubmit as a prompt-time rule surface (e.g. "always include the ticket id").
+It can block+erase the prompt with a reason, or inject `additionalContext`. Touches:
+`hooks.py` (new `precept-hook-userpromptsubmit`), `install.py` (register it), `enforce.py`
+(`evaluate_userpromptsubmit`), `adapters/claude_code.py` (its wire shape), `synthesize.py`
+(target it for prompt-time corrections). HookEvent.USER_PROMPT_SUBMIT already exists.
+
+## Follow-ups from the Stop-verdict build (non-blocking)
+- **Wire `applies_when` synthesis into `_judgment_policy`.** #5's relevance gate is
+  plumbed end-to-end in enforce + the deterministic synthesizer path, but the direct
+  judgment-compile path (`synthesize._judgment_policy`) sets `applies_when=None`, so a
+  judgment lesson ("no stub code") never gets the free relevance-skip in production yet.
+  Synthesize a sensible gate (e.g. "no stub code" -> applies_when Edit/Write).
+- **Validator note:** `applies_when` is silently ignored on non-judgment policies; add a
+  light validator (set only on JUDGMENT) for honesty.
+
 ## Done
-(none yet)
+- **Stop-verdict layer (#4 + #5 core), 2026-06-29.** AI-based claim detection (regex
+  retired), judgment relevance-gate plumbing, and ONE consolidated verdict call per turn
+  at Stop, with the `verdict_fn` injection seam keeping the Tier-1 eval deterministic.
+  Fail-open intact; hot path stays stdlib. 56 tests, evals green. (Built by a background
+  plan->implement->test->review pipeline; reviewer verdict: ship.)
