@@ -115,6 +115,7 @@ class MatchOp(str, Enum):
     NOT_CONTAINS = "not_contains"
     EQUALS = "equals"
     REGEX = "regex"
+    NOT_REGEX = "not_regex"  # matches when the pattern is ABSENT (presence-required rules, item D)
     GLOB = "glob"
     STARTS_WITH = "starts_with"
 
@@ -205,7 +206,19 @@ class Policy(BaseModel):
     rewrite_to: dict[str, str] | None = None  # REWRITE -> updatedInput
     applies_when: Match | None = None  # JUDGMENT relevance gate (#5): only ask the model
     #                                    when the turn's tool activity matches (free skip).
-    #                                    Read only for check_kind == JUDGMENT; None = always relevant.
+    #                                    INVARIANT: meaningful ONLY on JUDGMENT policies (the
+    #                                    validator below rejects it elsewhere); None = always relevant.
+
+    # Scope (item C): a rule fires everywhere (GLOBAL, the default) unless narrowed.
+    scope: Scope = Scope.GLOBAL
+    scope_value: str | None = None  # REPO -> the repo root path; LANGUAGE -> a language marker.
+    #                                  GLOBAL must leave this None (validator-enforced).
+
+    # Permission compile (item B): a CLEAN tool+path/domain/whole-tool ban can be
+    # enforced natively by Claude Code as a settings.json permission rule instead of a
+    # PreToolUse hook. When set, COMPILE routes this to settings.json and EXCLUDES the
+    # policy from the hook cache (enforce.py never sees it).
+    permission_rule: str | None = None
 
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> "Policy":
@@ -217,6 +230,23 @@ class Policy(BaseModel):
             raise ValueError("JUDGMENT policy requires a `judgment_prompt`")
         if self.decision == Decision.REWRITE and not self.rewrite_to:
             raise ValueError("REWRITE decision requires `rewrite_to`")
+        # Honesty (item 0): applies_when is only meaningful as a JUDGMENT relevance gate.
+        if self.applies_when is not None and self.check_kind != CheckKind.JUDGMENT:
+            raise ValueError("applies_when is only meaningful on JUDGMENT policies")
+        # Scope (item C): a repo rule needs a root to test cwd against; global carries none.
+        if self.scope == Scope.REPO and not self.scope_value:
+            raise ValueError("REPO scope requires a `scope_value` (the repo root path)")
+        if self.scope == Scope.GLOBAL and self.scope_value is not None:
+            raise ValueError("GLOBAL scope must not carry a `scope_value`")
+        # Permission rule (item B): only a hard deny/ask single-call PreToolUse ban routes
+        # to settings.json; everything else stays a hook.
+        if self.permission_rule is not None:
+            if self.decision not in (Decision.DENY, Decision.ASK):
+                raise ValueError("permission_rule is only valid for DENY/ASK decisions")
+            if self.hook_event != HookEvent.PRE_TOOL_USE:
+                raise ValueError("permission_rule is only valid for PreToolUse policies")
+            if self.check_kind != CheckKind.SINGLE_CALL:
+                raise ValueError("permission_rule is only valid for single_call policies")
         # Honesty invariant: only blockable events may carry a hard deny.
         if self.enforcement_tier == EnforcementTier.HARD and self.hook_event not in (
             HookEvent.PRE_TOOL_USE,
@@ -237,6 +267,7 @@ class Lesson(BaseModel):
     artifact_type: ArtifactType = ArtifactType.RULE
     status: Status = Status.PENDING
     scope: Scope = Scope.GLOBAL
+    scope_value: str | None = None  # repo root (REPO) or language marker; mirrors Policy (item C)
     durability: Durability = Durability.PERSISTENT
     determinism: Determinism = Determinism.DETERMINISTIC
 

@@ -135,14 +135,13 @@ It can block+erase the prompt with a reason, or inject `additionalContext`. Touc
 (`evaluate_userpromptsubmit`), `adapters/claude_code.py` (its wire shape), `synthesize.py`
 (target it for prompt-time corrections). HookEvent.USER_PROMPT_SUBMIT already exists.
 
-## Follow-ups from the Stop-verdict build (non-blocking)
-- **Wire `applies_when` synthesis into `_judgment_policy`.** #5's relevance gate is
-  plumbed end-to-end in enforce + the deterministic synthesizer path, but the direct
-  judgment-compile path (`synthesize._judgment_policy`) sets `applies_when=None`, so a
-  judgment lesson ("no stub code") never gets the free relevance-skip in production yet.
-  Synthesize a sensible gate (e.g. "no stub code" -> applies_when Edit/Write).
-- **Validator note:** `applies_when` is silently ignored on non-judgment policies; add a
-  light validator (set only on JUDGMENT) for honesty.
+## Follow-ups from the Stop-verdict build
+- **DONE (item 0, 2026-06-29).** `synthesize._judgment_policy` now infers a relevance
+  gate via `_infer_applies_when` (a code-quality lesson -> `applies_when` Edit), so the
+  free relevance-skip fires in production; and `Policy` now validates that `applies_when`
+  is only set on JUDGMENT (fail-closed at compile, never at enforce).
+  *Deferred follow-up:* OR-of-tools `applies_when` (Edit OR Write) is a schema change;
+  today the gate targets Edit (the dominant code-mutation tool).
 
 ## Done
 - **Stop-verdict layer (#4 + #5 core), 2026-06-29.** AI-based claim detection (regex

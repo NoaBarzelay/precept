@@ -3,12 +3,17 @@ and deterministic judgment-policy synthesis — all without a network call."""
 
 from datetime import date
 
+import pytest
+
 from precept import enforce, synthesize
 from precept.judge import (
     ConsolidatedVerdict, Question, QuestionVerdict, Verdict,
     consolidated_verdict, verdict,
 )
-from precept.models import CheckKind, Determinism, HookEvent, Lesson, Origin
+from precept.models import (
+    CheckKind, Condition, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
+    Match, MatchOp, Origin, Policy,
+)
 
 
 class _FakeMessages:
@@ -140,3 +145,45 @@ def test_judgment_lesson_compiles_without_an_llm():
     assert le.policies[0].check_kind == CheckKind.JUDGMENT
     assert le.policies[0].hook_event == HookEvent.STOP
     assert "no stubs" in le.policies[0].judgment_prompt
+
+
+def _judgment_lesson(**kw) -> Lesson:
+    base = dict(
+        id="no-stubs", created=date(2026, 6, 29), origin=Origin.CORRECTION, source_session="s",
+        determinism=Determinism.JUDGMENT, trigger="finishing a task",
+        what_was_wrong="left stub functions", what_to_do_instead="finish every function, no stubs",
+    )
+    base.update(kw)
+    return Lesson(**base)
+
+
+def test_judgment_lesson_gets_inferred_applies_when():
+    # A code-quality standard ("no stubs") is only relevant on a turn that edited code:
+    # the free relevance-skip (#5) must actually fire in production now (item 0).
+    le = synthesize.compile_lesson(_judgment_lesson(), client=FakeClient(raises=True))
+    aw = le.policies[0].applies_when
+    assert aw is not None and aw.tool == "Edit"
+
+
+def test_judgment_lesson_without_code_cue_has_no_gate():
+    # A tone/format judgment standard is always relevant -> no gate (no regression).
+    le = synthesize.compile_lesson(
+        _judgment_lesson(
+            trigger="answering a question", what_was_wrong="skipped the reasoning",
+            what_to_do_instead="always explain your reasoning",
+        ),
+        client=FakeClient(raises=True),
+    )
+    assert le.policies[0].applies_when is None
+
+
+def test_applies_when_rejected_on_non_judgment():
+    # Honesty validator: applies_when is meaningless outside JUDGMENT -> fail closed.
+    with pytest.raises(ValueError):
+        Policy(
+            id="x", lesson_id="l", enforcement_tier=EnforcementTier.HARD,
+            hook_event=HookEvent.PRE_TOOL_USE, check_kind=CheckKind.SINGLE_CALL,
+            decision=Decision.DENY, message="m",
+            match=Match(tool="Bash", conditions=[Condition(field="command", op=MatchOp.CONTAINS, value="x")]),
+            applies_when=Match(tool="Edit", conditions=[]),
+        )

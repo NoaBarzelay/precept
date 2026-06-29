@@ -104,6 +104,8 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
             trajectory=draft.trajectory,
             rewrite_to=draft.rewrite_to,
             applies_when=draft.applies_when,
+            scope=lesson.scope,
+            scope_value=lesson.scope_value,
         )
     except Exception:  # Policy validators rejected the shape -> fail closed
         return None
@@ -139,13 +141,38 @@ def synthesize_policy(lesson: Lesson, client: Any | None = None) -> Policy | Non
         return None  # fail closed: no policy rather than a wrong one
 
 
+# Cues that a judgment lesson is a CODE-QUALITY standard, hence only relevant on a
+# turn that edited code. Keeps the judgment-compile path model-free (item 0 / #5).
+_CODE_QUALITY_CUES = (
+    "stub", "todo", "placeholder", "dead code", "incomplete", "finish",
+    "implement", "no fake", "lazy", "scaffold", "not implemented", "pass  #",
+)
+
+
+def _infer_applies_when(lesson: Lesson) -> Match | None:
+    """Best-effort relevance gate (#5) for a JUDGMENT lesson — no LLM call.
+
+    A code-quality standard ("no stub code") is only relevant when the turn edited
+    code, so gate it on Edit (the dominant code-mutation tool). `applies_when` is a
+    single Match (one tool), so we target Edit rather than widen the schema to an
+    OR-of-tools; the cost is only a rare Write-introduced stub (a conservative gate:
+    when it doesn't match the rule is skipped for free, never wrongly fired). When no
+    confident mapping exists we return None (always-relevant — no regression)."""
+    text = f"{lesson.trigger} {lesson.what_was_wrong} {lesson.what_to_do_instead}".lower()
+    if any(cue in text for cue in _CODE_QUALITY_CUES):
+        return Match(tool="Edit", conditions=[])
+    return None
+
+
 def _judgment_policy(lesson: Lesson, applies_when: Match | None = None) -> Policy:
     """Build a Stop judgment policy directly from the lesson (no LLM needed): the
     gate is deterministic, the verdict prompt is the rule itself (auditable).
 
     `applies_when` is an optional relevance gate (#5): when set, the rule is only
     asked of the model if the turn's tool activity matches it (else skipped for
-    free). Default None = always relevant (today's behavior, no regression)."""
+    free). The explicit-arg path is kept (a caller can still pass one); when None we
+    INFER a sensible gate from the lesson so the free relevance-skip actually fires
+    in production (item 0). A None inference => always relevant (no regression)."""
     return Policy(
         id=f"{lesson.id}-p1",
         lesson_id=lesson.id,
@@ -154,7 +181,9 @@ def _judgment_policy(lesson: Lesson, applies_when: Match | None = None) -> Polic
         check_kind=CheckKind.JUDGMENT,
         decision=Decision.DENY,
         message=lesson.what_to_do_instead,
-        applies_when=applies_when,
+        applies_when=applies_when if applies_when is not None else _infer_applies_when(lesson),
+        scope=lesson.scope,
+        scope_value=lesson.scope_value,
         judgment_prompt=(
             f"Requirement: {lesson.what_to_do_instead}. "
             f"(The user flagged this because: {lesson.what_was_wrong}.) "
