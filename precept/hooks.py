@@ -30,6 +30,14 @@ def stop_main() -> int:
     return 0
 
 
+def userpromptsubmit_main() -> int:
+    try:
+        cc.emit(enforce.evaluate_userpromptsubmit(cc.read_event()))
+    except Exception:
+        pass  # fail open
+    return 0
+
+
 def detect_main() -> int:
     """SessionEnd entrypoint: kick DETECT off, detached, and return immediately."""
     try:

@@ -8,7 +8,7 @@ guarantee of compliance). Precept only claims enforcement for the HARD tier.
 
 | # | Type | Pillar | Tier | Claude Code target | Built |
 |---|------|--------|------|--------------------|-------|
-| 1 | Rule | process | HARD | hooks (PreToolUse/Stop) + permission deny | ✅ |
+| 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | ✅ |
 | 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | ✅ |
 | 3 | CLAUDE.md edit | process | SOFT | `~/.claude/CLAUDE.md` / `.claude/rules/*.md` | ⬜ |
 | 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | ⬜ |
@@ -16,19 +16,22 @@ guarantee of compliance). Precept only claims enforcement for the HARD tier.
 | 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | ⬜ |
 | 7 | Slash command | process | SOFT | `.claude/skills/` or `.claude/commands/` | ⬜ |
 | 8 | MCP / tool config | process | config | `.mcp.json` / `mcpServers` | ⬜ |
-| 9 | Permission profile | process | HARD | `settings.json` `permissions` | 🟡 import only |
+| 9 | Permission profile | process | HARD | `settings.json` `permissions` | 🟡 import + clean-ban write-back |
 
 ---
 
 ## 1. Rule  (HARD, built)
 
 **What.** A deterministic or judgment guardrail on agent behavior: the enforceable
-subset of a process. Three flavors: single-call ("never `npm`, use `pnpm`"),
-trajectory ("tests must run before claiming success"), judgment ("don't leave stub
-code", a model verdict at a deterministic gate).
+subset of a process. Flavors: single-call ("never `npm`, use `pnpm`" — deny or a clean
+`rewrite` to the corrected value), trajectory ("tests must run before claiming success"),
+judgment ("don't leave stub code", a model verdict at a deterministic gate), and
+prompt-time ("always include the ticket id", over the user's own prompt). Rules are
+scope-aware: GLOBAL by default, or REPO (fires only when cwd is inside the repo root).
 
 **When/how used.** Fires automatically: single-call at a tool call (PreToolUse),
-trajectory and judgment at turn-end (Stop). The user never invokes it; the hook does.
+trajectory and judgment at turn-end (Stop), prompt rules at prompt submission
+(UserPromptSubmit). The user never invokes it; the hook does.
 
 **Structure.** Precept `Lesson` holding 1..N `Policy{hook_event, check_kind,
 decision ∈ {allow,deny,ask,rewrite}, match | trajectory | judgment_prompt, message,
@@ -176,8 +179,12 @@ bypassable, so for reliable enforcement Precept prefers a PreToolUse hook (#1) w
 argument logic matters, and a permission deny only for clean tool+path/domain bans.
 
 **Infra.** `settings.json` `permissions`. HARD (enforced by Claude Code, not the
-model). Precept already *imports* these (bootstrap parses your `permissions.deny`/`ask`
-into hard policies); writing curated profiles back out is the unbuilt half.
+model). Precept *imports* these (bootstrap parses your `permissions.deny`/`ask` into hard
+policies) AND now *writes back* the clean bans it synthesizes from corrections: a clean
+tool+path/domain/whole-tool ban compiles to a marker-managed `permissions.deny`/`.ask`
+entry (idempotent, atomic, .bak; a sidecar manifest subtracts only Precept's own strings,
+never the user's). Curated *named* profiles you apply/remove as a unit remain the
+unbuilt half.
 
 ---
 

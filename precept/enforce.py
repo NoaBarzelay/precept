@@ -284,3 +284,63 @@ def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None =
     pols = policies if policies is not None else load_compiled()
     entries = cc.read_transcript(event.get("transcript_path", ""))
     return evaluate_stop_entries(entries, pols, cwd=event.get("cwd", "") or "")
+
+
+def evaluate_userpromptsubmit(
+    event: dict[str, Any],
+    policies: list[dict[str, Any]] | None = None,
+    verdict_fn: Callable[[list, str], dict | None] | None = None,
+) -> dict:
+    """Prompt-time rules (item D). FAIL-OPEN. Two flavors, both scope-filtered by cwd:
+
+      - single_call over the PROMPT TEXT: a Match whose tool == 'UserPromptSubmit' with a
+        condition over a synthetic 'prompt' field. A presence-required rule ("the prompt
+        must contain the ticket id") uses op=not_regex/not_contains so the Match is TRUE
+        exactly when the requirement is VIOLATED (the required thing is missing) -> block.
+      - judgment: a model verdict over the prompt (lazy judge), like Stop judgment, riding
+        the same consolidated-verdict seam (verdict_fn for tests/eval; real judge in prod).
+
+    Block on the first matching deterministic rule, then the first failed judgment verdict;
+    any None/empty verdict never blocks (never erase the user's prompt on a model hiccup)."""
+    pols = policies if policies is not None else load_compiled()
+    cwd = event.get("cwd", "") or ""
+    prompt = event.get("prompt", "") or ""
+    ups = [
+        p for p in pols
+        if p.get("hook_event") == "UserPromptSubmit" and _in_scope(p, cwd)
+    ]
+    if not ups:
+        return cc.userpromptsubmit_allow()
+
+    synthetic_input = {"prompt": prompt}
+    # 1. Deterministic single_call rules over the prompt text.
+    for p in ups:
+        if p.get("check_kind") == "single_call" and _matches(
+            p.get("match"), "UserPromptSubmit", synthetic_input
+        ):
+            return cc.userpromptsubmit_block(
+                p.get("message") or "Blocked by a Precept prompt rule."
+            )
+
+    # 2. Judgment prompt rules -> one consolidated verdict (reuse the Stop seam).
+    judg = [p for p in ups if p.get("check_kind") == "judgment"]
+    if not judg:
+        return cc.userpromptsubmit_allow()
+    questions = [
+        {"id": p["id"], "kind": "standard", "prompt": p.get("judgment_prompt", "")}
+        for p in judg
+    ]
+    by_id = {p["id"]: p for p in judg}
+    context = f"User prompt:\n{prompt}"
+    vf = verdict_fn or _consolidated_judge
+    result = vf(questions, context)
+    if not result:
+        return cc.userpromptsubmit_allow()
+    for q in questions:
+        v = result.get(q["id"])
+        if v is not None and not _ok(v):
+            p = by_id[q["id"]]
+            return cc.userpromptsubmit_block(
+                p.get("message") or _reason(v) or "Blocked by a Precept prompt rule."
+            )
+    return cc.userpromptsubmit_allow()

@@ -34,6 +34,7 @@ TOOL_FIELDS: dict[str, set[str]] = {
     "Glob": {"pattern", "path"},
     "Grep": {"pattern", "path"},
     "NotebookEdit": {"notebook_path", "new_source"},
+    "UserPromptSubmit": {"prompt"},  # synthetic tool: a Match over the user's prompt text (item D)
 }
 
 SYSTEM = """You compile ONE correction into a deterministic, mechanical guardrail \
@@ -46,6 +47,11 @@ check_kind=single_call, with a Match over the tool's input field.
 hook_event=Stop, check_kind=trajectory, with ONLY requires=(the Match that proves X \
 happened). Do NOT produce a claim regex — whether the agent is claiming completion is \
 judged by AI at the Stop gate, not by a pattern.
+- A rule about what the USER'S OWN PROMPT must always contain ("always include the ticket \
+id") -> hook_event=UserPromptSubmit, check_kind=single_call, with a Match over the \
+synthetic `prompt` field. For a presence-REQUIRED rule, use op=not_regex (or not_contains) \
+so the Match fires exactly when the required content is ABSENT (the violation) and blocks \
+with a reminder message.
 
 Matchers must be EXACT. Prefer anchored / word-boundary (\\b) regex over plain \
 substrings — e.g. "\\bnpm install" so it does NOT also match "pnpm install".

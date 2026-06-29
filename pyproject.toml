@@ -23,6 +23,7 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 precept = "precept.cli:app"
 precept-hook-pretooluse = "precept.hooks:pretooluse_main"
 precept-hook-stop = "precept.hooks:stop_main"
+precept-hook-userpromptsubmit = "precept.hooks:userpromptsubmit_main"
 precept-hook-sessionend = "precept.hooks:detect_main"
 
 [build-system]

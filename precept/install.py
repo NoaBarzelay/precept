@@ -25,6 +25,7 @@ _PREFIX = "precept-hook-"
 _ENTRIES = [
     ("PreToolUse", "*", "precept-hook-pretooluse"),
     ("Stop", None, "precept-hook-stop"),
+    ("UserPromptSubmit", None, "precept-hook-userpromptsubmit"),
     ("SessionEnd", None, "precept-hook-sessionend"),
 ]
 

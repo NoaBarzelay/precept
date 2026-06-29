@@ -11,6 +11,15 @@ PreToolUse stdout (exit 0): {"hookSpecificOutput": {"hookEventName": "PreToolUse
 Stop stdin: {session_id, transcript_path, cwd, permission_mode, hook_event_name, effort}
 Stop stdout (exit 0): {"decision": "block", "reason": str}  (omit to allow)
   -> there is NO stop_hook_active field or block cap in the current contract.
+
+UserPromptSubmit stdin: {session_id, transcript_path, cwd, permission_mode,
+  hook_event_name: "UserPromptSubmit", prompt}
+UserPromptSubmit stdout (exit 0):
+  - block + ERASE the prompt: {"decision": "block", "reason": str}  (reason shown to the
+    user, NOT fed to the model)
+  - inject context (prompt proceeds): {"hookSpecificOutput": {"hookEventName":
+    "UserPromptSubmit", "additionalContext": str}}
+  - omit (return {}) to let the prompt proceed unchanged.
 """
 
 from __future__ import annotations
@@ -80,6 +89,25 @@ def stop_block(reason: str) -> dict:
 
 def stop_allow() -> dict:
     return {}  # omitting `decision` lets Claude stop
+
+
+# --- UserPromptSubmit decisions ---------------------------------------------
+def userpromptsubmit_allow() -> dict:
+    return {}  # exit 0, no output -> the prompt proceeds unchanged
+
+
+def userpromptsubmit_block(reason: str) -> dict:
+    # blocks prompt processing and ERASES the prompt; `reason` is shown to the user.
+    return {"decision": "block", "reason": reason}
+
+
+def userpromptsubmit_context(additional_context: str) -> dict:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": additional_context,
+        }
+    }
 
 
 def read_transcript(path: str) -> list[dict[str, Any]]:

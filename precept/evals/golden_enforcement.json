@@ -165,5 +165,47 @@
     "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}}],
     "injected_verdicts": {"rtests": {"ok": false, "reason": "claiming success without tests"}},
     "expect": "allow"
+  },
+  {
+    "id": "prompt-missing-ticket-blocks",
+    "description": "a prompt-time rule requires a ticket id; the prompt has none -> block (not_regex fires when absent)",
+    "kind": "userpromptsubmit",
+    "policies": [{"id": "ticket", "lesson_id": "include-ticket", "enforcement_tier": "hard", "hook_event": "UserPromptSubmit", "check_kind": "single_call", "decision": "deny", "message": "Include the ticket id (e.g. ABC-123).", "match": {"tool": "UserPromptSubmit", "conditions": [{"field": "prompt", "op": "not_regex", "value": "[A-Z]+-[0-9]+"}]}}],
+    "event": {"prompt": "fix the bug"},
+    "expect": "block"
+  },
+  {
+    "id": "prompt-has-ticket-allows",
+    "description": "same rule; the prompt carries a ticket id -> allow",
+    "kind": "userpromptsubmit",
+    "policies": [{"id": "ticket", "lesson_id": "include-ticket", "enforcement_tier": "hard", "hook_event": "UserPromptSubmit", "check_kind": "single_call", "decision": "deny", "message": "Include the ticket id (e.g. ABC-123).", "match": {"tool": "UserPromptSubmit", "conditions": [{"field": "prompt", "op": "not_regex", "value": "[A-Z]+-[0-9]+"}]}}],
+    "event": {"prompt": "fix ABC-123 bug"},
+    "expect": "allow"
+  },
+  {
+    "id": "prompt-judgment-blocks",
+    "description": "a judgment prompt rule; injected verdict fails it -> block",
+    "kind": "userpromptsubmit",
+    "policies": [{"id": "pj", "lesson_id": "be-specific", "enforcement_tier": "hard", "hook_event": "UserPromptSubmit", "check_kind": "judgment", "decision": "deny", "message": "Say which environment.", "judgment_prompt": "does the prompt name the target environment?"}],
+    "event": {"prompt": "deploy it"},
+    "injected_verdicts": {"pj": {"ok": false, "reason": "no env named"}},
+    "expect": "block"
+  },
+  {
+    "id": "prompt-judgment-allows",
+    "description": "same judgment prompt rule; injected verdict passes -> allow",
+    "kind": "userpromptsubmit",
+    "policies": [{"id": "pj", "lesson_id": "be-specific", "enforcement_tier": "hard", "hook_event": "UserPromptSubmit", "check_kind": "judgment", "decision": "deny", "message": "Say which environment.", "judgment_prompt": "does the prompt name the target environment?"}],
+    "event": {"prompt": "deploy it to staging"},
+    "injected_verdicts": {"pj": {"ok": true}},
+    "expect": "allow"
+  },
+  {
+    "id": "prompt-rule-out-of-scope-allows",
+    "description": "a repo-scoped prompt rule with cwd outside its repo -> not applied -> allow",
+    "kind": "userpromptsubmit",
+    "policies": [{"id": "ticket-repo", "lesson_id": "include-ticket-here", "enforcement_tier": "hard", "hook_event": "UserPromptSubmit", "check_kind": "single_call", "decision": "deny", "message": "Include the ticket id.", "scope": "repo", "scope_value": "/work/myrepo", "match": {"tool": "UserPromptSubmit", "conditions": [{"field": "prompt", "op": "not_regex", "value": "[A-Z]+-[0-9]+"}]}}],
+    "event": {"prompt": "fix the bug", "cwd": "/elsewhere"},
+    "expect": "allow"
   }
 ]

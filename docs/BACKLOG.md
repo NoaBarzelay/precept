@@ -141,12 +141,16 @@ never wider); `compile.py` carries scope/scope_value and skips a repo rule with 
 global when it can't. Deferred: real LANGUAGE-scope matching (plumbed as global-for-now
 with an inline TODO — would read package.json/pyproject from cwd in the hot path).
 
-### D. UserPromptSubmit rules (third hard surface)
-Add UserPromptSubmit as a prompt-time rule surface (e.g. "always include the ticket id").
-It can block+erase the prompt with a reason, or inject `additionalContext`. Touches:
-`hooks.py` (new `precept-hook-userpromptsubmit`), `install.py` (register it), `enforce.py`
-(`evaluate_userpromptsubmit`), `adapters/claude_code.py` (its wire shape), `synthesize.py`
-(target it for prompt-time corrections). HookEvent.USER_PROMPT_SUBMIT already exists.
+### D. UserPromptSubmit rules (third hard surface) — DONE (2026-06-29)
+A prompt-time rule surface ("always include the ticket id"). `evaluate_userpromptsubmit`
+runs deterministic single_call rules over a synthetic `prompt` field (a presence-required
+rule uses op=not_regex so it fires exactly when the required content is absent) then a
+consolidated judgment verdict (same seam as Stop), scope-filtered by cwd, FAIL-OPEN (a
+None/empty verdict never erases the user's prompt). New `precept-hook-userpromptsubmit`
+entrypoint + console script; install registers it (uninstall covered by the existing
+prefix-keyed strip); adapter wire fns (block / additionalContext / allow). VERIFIED live:
+the UserPromptSubmit contract (stdin cwd/prompt; `{"decision":"block","reason"}` blocks +
+erases; `hookSpecificOutput.additionalContext` injects) against code.claude.com/docs/en/hooks.
 
 ## Follow-ups from the Stop-verdict build
 - **DONE (item 0, 2026-06-29).** `synthesize._judgment_policy` now infers a relevance
