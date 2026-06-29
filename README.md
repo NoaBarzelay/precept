@@ -1,15 +1,22 @@
 # Precept
 
-**Policy-as-code for your coding agent.** Precept turns the corrections and
-learnings from a Claude Code session into durable, auditable artifacts — and
-**hard-enforces** the deterministic subset, so a rule you set once is actually
-obeyed instead of softly remembered.
+**Your personal, self-improving platform for agentic AI work.** Precept defines and
+catalogs the *processes* you run with AI and the *entities and data* they act on, and
+improves both continuously by learning from how you actually work, every session.
 
-> Claude Code's own docs are blunt: `CLAUDE.md`, skills, and memory are *"context,
-> not enforced configuration… no guarantee of strict compliance."* Only **hooks**,
-> **permission-deny rules**, and **subagent tool-scoping** truly enforce. Precept
-> compiles the enforceable subset of your corrections down to those, and labels
-> everything else honestly as **soft-steered**.
+- **Processes** the reusable ways you get work done with agents (directions, rules,
+  skills, personas, workflows). Precept captures, catalogs, and refines them.
+- **Entities and data** what your work is about (knowledge, projects, domains, people).
+  Precept catalogs what you know so it can be recalled and reused.
+- **Self-improving** every session is an input: Precept learns new processes and
+  entities, sharpens existing ones, and retires stale ones, with your review.
+
+One capability inside the process layer is **deterministic enforcement**: the part of a
+process that can be checked mechanically is compiled into Claude Code hooks that *block*,
+not just suggest. (Claude Code's own docs note that `CLAUDE.md` and skills are "context,
+not enforced configuration"; hooks are the only hard layer. Precept labels every artifact
+**HARD-enforced** vs **SOFT-steered**, and only claims enforcement for the hard tier.) It
+is the sharpest edge of the platform, not the whole of it.
 
 ## Why this exists
 
