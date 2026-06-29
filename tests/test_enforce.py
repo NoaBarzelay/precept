@@ -98,3 +98,64 @@ def test_stop_fails_open_when_verdict_none():
     assert enforce.evaluate_stop_entries(
         _CLAIM, [TESTS_BEFORE_DONE], verdict_fn=lambda q, c: None
     ) == {}
+
+
+# A second, independent trajectory rule whose `requires` is ALSO unmet on _CLAIM,
+# so two questions are generated this turn (must still be ONE verdict call).
+LINT_BEFORE_DONE = {
+    "id": "p4", "lesson_id": "lint-first", "enforcement_tier": "hard",
+    "hook_event": "Stop", "check_kind": "trajectory",
+    "message": "Run the linter before claiming it works.",
+    "trajectory": {
+        "requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "ruff|eslint"}]},
+    },
+}
+
+
+def test_multiple_questions_go_through_one_consolidated_call():
+    # BACKLOG #4/#5 core invariant: when N gate questions need asking this turn, the
+    # model is consulted EXACTLY ONCE (a single consolidated verdict), not per-rule.
+    calls: list[list[dict]] = []
+
+    def counting_vf(questions, context):
+        calls.append(questions)
+        return {q["id"]: {"ok": True} for q in questions}
+
+    out = enforce.evaluate_stop_entries(
+        _CLAIM, [TESTS_BEFORE_DONE, LINT_BEFORE_DONE], verdict_fn=counting_vf
+    )
+    assert out == {}  # both verdicts ok -> allow
+    assert len(calls) == 1  # ONE call, not one per rule
+    assert {q["id"] for q in calls[0]} == {"p3", "p4"}  # both questions in that one call
+
+
+def test_consolidated_call_blocks_on_first_violation_in_order():
+    # Two unmet trajectory rules in one call; the first (trajectory order) that the
+    # verdict fails is the one whose message is surfaced.
+    calls: list = []
+
+    def vf(questions, context):
+        calls.append(questions)
+        return {"p3": {"ok": True}, "p4": {"ok": False, "reason": "no lint"}}
+
+    out = enforce.evaluate_stop_entries(
+        _CLAIM, [TESTS_BEFORE_DONE, LINT_BEFORE_DONE], verdict_fn=vf
+    )
+    assert out.get("decision") == "block"
+    assert "lint" in out["reason"].lower()
+    assert len(calls) == 1  # still exactly one consolidated call
+
+
+def test_deterministic_stop_path_imports_no_judge_or_anthropic():
+    # The fast (all-deterministic) path must NEVER touch the model layer: with the
+    # requirement met, no question is generated, so neither `judge` nor `anthropic`
+    # is imported and the real `_consolidated_judge` bridge is never reached.
+    import sys
+
+    for mod in ("precept.judge", "anthropic"):
+        sys.modules.pop(mod, None)
+    # No verdict_fn -> would fall back to the real lazy judge IF a question existed.
+    out = enforce.evaluate_stop_entries(_TESTS_RAN, [TESTS_BEFORE_DONE])
+    assert out == {}
+    assert "precept.judge" not in sys.modules
+    assert "anthropic" not in sys.modules

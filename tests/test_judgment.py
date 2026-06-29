@@ -97,6 +97,37 @@ def test_judgment_applies_when_fires_when_relevant():
     assert out.get("decision") == "block"
 
 
+# A trajectory rule and a judgment rule that BOTH need asking on the same turn.
+_TRAJ = {
+    "id": "t", "lesson_id": "tests-first", "enforcement_tier": "hard",
+    "hook_event": "Stop", "check_kind": "trajectory", "message": "Run tests first.",
+    "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest"}]}},
+}
+
+
+def test_mixed_trajectory_and_judgment_use_one_call_with_relevance_gate():
+    # On an Edit turn with no pytest run: the trajectory rule is unmet (-> claim
+    # question) AND the gated judgment rule is relevant (Edit happened -> standard
+    # question). Both must ride a SINGLE consolidated verdict call; an irrelevant
+    # judgment rule (applies_when not matched) generates no question at all.
+    irrelevant = {**JUDGMENT_POLICY, "id": "irrel", "applies_when": {"tool": "WebFetch", "conditions": []}}
+    calls: list = []
+
+    def vf(questions, context):
+        calls.append(questions)
+        return {q["id"]: {"ok": True} for q in questions}
+
+    out = enforce.evaluate_stop_entries(
+        EDIT_TRANSCRIPT, [_TRAJ, JUDGMENT_POLICY_GATED, irrelevant], verdict_fn=vf
+    )
+    assert out == {}
+    assert len(calls) == 1  # exactly one consolidated call
+    ids = {q["id"] for q in calls[0]}
+    assert ids == {"t", "j"}  # traj + relevant judgment only; "irrel" was free-skipped
+    kinds = {q["id"]: q["kind"] for q in calls[0]}
+    assert kinds["t"] == "claim" and kinds["j"] == "standard"
+
+
 def test_judgment_lesson_compiles_without_an_llm():
     le = Lesson(
         id="no-stubs", created=date(2026, 6, 27), origin=Origin.CORRECTION, source_session="s",
