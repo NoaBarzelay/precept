@@ -139,6 +139,24 @@
     "expect": "block"
   },
   {
+    "id": "npm-rewrite-to-pnpm",
+    "description": "a clean exact-command substitution rewrites the field instead of denying",
+    "kind": "pretooluse",
+    "policies": [{"id": "rw-npm", "lesson_id": "use-pnpm", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "rewrite", "message": "Use pnpm, not npm.", "rewrite_to": {"command": "pnpm install"}, "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "equals", "value": "npm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm install"}},
+    "expect": "allow",
+    "expect_rewrite": {"command": "pnpm install"}
+  },
+  {
+    "id": "edit-field-rewrite",
+    "description": "an Edit field substitution rewrites the new_string wholesale",
+    "kind": "pretooluse",
+    "policies": [{"id": "rw-edit", "lesson_id": "use-rg", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "rewrite", "message": "Use rg, not grep.", "rewrite_to": {"new_string": "rg pattern"}, "match": {"tool": "Edit", "conditions": [{"field": "new_string", "op": "equals", "value": "grep pattern"}]}}],
+    "call": {"tool_name": "Edit", "tool_input": {"file_path": "run.sh", "old_string": "x", "new_string": "grep pattern"}},
+    "expect": "allow",
+    "expect_rewrite": {"new_string": "rg pattern"}
+  },
+  {
     "id": "repo-scoped-stop-skipped-outside",
     "description": "a repo-scoped Stop trajectory rule is skipped when cwd is outside its repo (no question -> allow)",
     "kind": "stop",

@@ -106,11 +106,15 @@ Owner decisions, 2026-06-29. Build these as a second multi-agent pipeline once
 wu9mkvty7 (the #4/#5 Stop-verdict build) is merged, to avoid two agents editing the same
 files concurrently.
 
-### A. `rewrite` is the default for substitution corrections
-When a correction is a clean substitution ("use X not Y", Y -> X in the same tool field),
-synthesize a `rewrite` policy (decision=rewrite, rewrite_to={field: corrected value}) by
-DEFAULT, not deny. Deny only when there is no clean substitution. enforce + models already
-support rewrite; the change is in `synthesize.py` (prefer rewrite for substitutions).
+### A. `rewrite` is the default for substitution corrections — DONE (2026-06-29)
+The synthesizer SYSTEM prompt now PREFERS rewrite for a clean whole-field substitution
+("use pnpm not npm" -> decision=rewrite, rewrite_to={field: corrected value}) and reserves
+deny for destructive ops and variadic commands where a blind whole-field replace would
+drop arguments. The model validator already fail-closes a REWRITE draft with no rewrite_to.
+New deterministic eval cases assert the rewrite payload (harness extended with
+`expect_rewrite`, counted as a correctly-handled allow). Deferred: a field-level
+token-substitution rewrite_to shape (regex-replace within a variadic field) so a token swap
+inside `npm install left-pad` can rewrite rather than deny.
 
 ### B. Compile clean bans to native `permissions.deny`
 For clean tool+path/domain bans that need NO argument logic (`Read(.env)`, `WebFetch(domain:..)`,

@@ -73,3 +73,28 @@ def test_stylistic_lesson_never_calls_model():
     # raises=True would blow up if the client were used; stylistic short-circuits first
     le = synthesize.compile_lesson(_lesson(Determinism.STYLISTIC), client=FakeClient(raises=True))
     assert le.policies == []
+
+
+# --- REWRITE-by-default for clean substitutions (item A) --------------------
+def _rewrite_draft(rewrite_to=None) -> PolicyDraft:
+    return PolicyDraft(
+        reasoning="clean substitution", can_compile=True,
+        hook_event=HookEvent.PRE_TOOL_USE, check_kind=CheckKind.SINGLE_CALL,
+        decision=Decision.REWRITE, message="Use pnpm.",
+        rewrite_to=rewrite_to,
+        match=Match(tool="Bash", conditions=[Condition(field="command", op=MatchOp.EQUALS, value="npm install")]),
+    )
+
+
+def test_substitution_draft_compiles_to_rewrite():
+    p = synthesize.synthesize_policy(
+        _lesson(), client=FakeClient(_rewrite_draft({"command": "pnpm install"}))
+    )
+    assert p is not None
+    assert p.decision == Decision.REWRITE
+    assert p.rewrite_to == {"command": "pnpm install"}
+
+
+def test_rewrite_draft_without_rewrite_to_is_rejected():
+    # The model validator requires rewrite_to for REWRITE -> fail closed (no policy).
+    assert synthesize.synthesize_policy(_lesson(), client=FakeClient(_rewrite_draft(None))) is None

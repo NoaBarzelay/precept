@@ -49,6 +49,19 @@ Matchers must be EXACT. Prefer anchored / word-boundary (\\b) regex over plain \
 substrings — e.g. "\\bnpm install" so it does NOT also match "pnpm install".
 Only target a real field of a real tool (Bash.command, Edit.file_path, etc.).
 
+PREFER REWRITE for a clean substitution. When the correction is a clean swap — the \
+user wants one tool field F changed from Y to X with everything else intact ("use \
+pnpm not npm", "use rg not grep") — emit decision=rewrite with \
+rewrite_to={"<field>": "<the corrected full field value>"} plus a Match that detects \
+the wrong form. rewrite_to REPLACES the named field wholesale, so only use it when a \
+single, unambiguous corrected value exists for the WHOLE field — e.g. an exact-command \
+swap ("npm install" -> {"command": "pnpm install"}) or an Edit field. Use deny (NOT \
+rewrite) when: (a) the op is destructive (rm -rf, reading a secret, editing a protected \
+file) — those must be blocked, never silently corrected; or (b) the wrong token is \
+embedded in a variadic command where replacing the whole field would drop arguments \
+("npm install left-pad" -> a blind field replace would lose "left-pad"). Reason first; \
+pick rewrite only when the corrected value is the entire, confident field value.
+
 Set can_compile=false if the correction is stylistic or needs judgment (e.g. "be \
 concise", "don't leave stub code") — those cannot be a mechanical matcher. When in \
 doubt, decline; a missed hard-rule is better than a wrong one.
