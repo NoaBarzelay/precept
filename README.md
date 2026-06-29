@@ -8,8 +8,10 @@ improves both continuously by learning from how you actually work, every session
   skills, personas, workflows). Precept captures, catalogs, and refines them.
 - **Entities and data** what your work is about (knowledge, projects, domains, people).
   Precept catalogs what you know so it can be recalled and reused.
-- **Self-improving** every session is an input: Precept learns new processes and
-  entities, sharpens existing ones, and retires stale ones, with your review.
+- **Self-improving** from two sources: (1) *your work* (every session is an input;
+  it learns new processes and entities, sharpens existing ones, retires stale ones),
+  and (2) *its own learning* (on its own judgment it reads best practices, checks the
+  web, and proposes improvements). It acts with your review, never silently.
 
 One capability inside the process layer is **deterministic enforcement**: the part of a
 process that can be checked mechanically is compiled into Claude Code hooks that *block*,
