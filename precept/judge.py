@@ -48,3 +48,82 @@ def verdict(judgment_prompt: str, context: str, client: Any | None = None) -> Ve
         return resp.parsed_output
     except Exception:
         return None  # fail open
+
+
+# ---------------------------------------------------------------------------
+# Consolidated verdict (#4 + #5): ONE call answering every gate question this turn.
+# ---------------------------------------------------------------------------
+CONSOLIDATED_SYSTEM = """You are a strict but fair gate over SEVERAL checks the user \
+set for their coding agent. You are given the agent's final state and a numbered list \
+of questions. For EACH question, decide ok (true/false).
+
+Bias hard toward ok=true: a wrongful block is worse than a miss, so set ok=false ONLY \
+when the question is CLEARLY answered against the agent. When uncertain or not \
+applicable, ok=true.
+
+Two kinds of question:
+- kind="claim": the required step was already shown NOT to have happened. So you are \
+only judging INTENT: is the agent claiming the task is complete / working / done? \
+Set ok=false ONLY if it is clearly claiming completion (that's the violation). If it \
+is just narrating progress, asking, or not claiming done, ok=true.
+- kind="standard": is the stated standard clearly UNMET in the final state? ok=false \
+only if clearly violated; otherwise ok=true.
+
+In every case ok=false means "block this". Answer every question by its id. \
+Reason first (brief, per question)."""
+
+
+class Question(BaseModel):
+    """One thing to check at the gate this turn. `kind` frames it for the model:
+    a trajectory 'claim' check vs a judgment 'standard'."""
+
+    id: str
+    kind: str  # "claim" | "standard"
+    prompt: str  # claim: the requirement that was UNMET; standard: the rule text
+
+
+class QuestionVerdict(BaseModel):
+    id: str
+    ok: bool  # True = no violation (default-safe)
+    reason: str = ""
+
+
+class ConsolidatedVerdict(BaseModel):
+    reasoning: str = Field(description="brief: per-question, does it apply and is it satisfied?")
+    verdicts: list[QuestionVerdict]
+
+
+def consolidated_verdict(
+    questions: list[Question],
+    context: str,
+    client: Any | None = None,
+) -> dict[str, QuestionVerdict] | None:
+    """Ask the model ONCE about all gate questions for this turn. Returns a
+    {id -> QuestionVerdict} map, or None on any failure (caller FAILS OPEN).
+    Missing/extra ids in the response are tolerated; a missing id is treated as
+    ok=True by the caller (default-safe)."""
+    if not questions:
+        return {}
+    try:
+        if client is None:
+            import anthropic
+
+            client = anthropic.Anthropic()
+        listing = "\n".join(
+            f"- id={q.id} kind={q.kind}: {q.prompt}" for q in questions
+        )
+        resp = client.messages.parse(
+            model=JUDGE_MODEL,
+            max_tokens=1024,
+            system=CONSOLIDATED_SYSTEM,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"AGENT FINAL STATE:\n{context}\n\nQUESTIONS:\n{listing}",
+                }
+            ],
+            output_format=ConsolidatedVerdict,
+        )
+        return {v.id: v for v in resp.parsed_output.verdicts}
+    except Exception:
+        return None  # fail open

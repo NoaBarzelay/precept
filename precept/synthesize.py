@@ -41,8 +41,9 @@ Pick the NARROWEST blocking mechanism:
 - A banned/required command or a protected file edit -> hook_event=PreToolUse, \
 check_kind=single_call, with a Match over the tool's input field.
 - "X must happen before the agent claims it's done" (tests ran, lint passed) -> \
-hook_event=Stop, check_kind=trajectory, with requires=(the Match that proves X \
-happened) and claim_pattern=(a regex detecting the success claim in the final text).
+hook_event=Stop, check_kind=trajectory, with ONLY requires=(the Match that proves X \
+happened). Do NOT produce a claim regex — whether the agent is claiming completion is \
+judged by AI at the Stop gate, not by a pattern.
 
 Matchers must be EXACT. Prefer anchored / word-boundary (\\b) regex over plain \
 substrings — e.g. "\\bnpm install" so it does NOT also match "pnpm install".
@@ -50,7 +51,11 @@ Only target a real field of a real tool (Bash.command, Edit.file_path, etc.).
 
 Set can_compile=false if the correction is stylistic or needs judgment (e.g. "be \
 concise", "don't leave stub code") — those cannot be a mechanical matcher. When in \
-doubt, decline; a missed hard-rule is better than a wrong one. Reason first."""
+doubt, decline; a missed hard-rule is better than a wrong one.
+
+For a judgment standard you may optionally set applies_when to the tool activity that \
+makes it relevant (e.g. a Match over Edit/Write for a code-quality rule), so the rule \
+is only evaluated when that activity occurred this turn. Reason first."""
 
 
 class PolicyDraft(BaseModel):
@@ -65,6 +70,7 @@ class PolicyDraft(BaseModel):
     match: Match | None = None
     trajectory: TrajectorySpec | None = None
     rewrite_to: dict[str, str] | None = None
+    applies_when: Match | None = None  # JUDGMENT relevance gate (#5); None = always relevant
 
 
 def validate_match(match: Match | None) -> bool:
@@ -83,6 +89,8 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
         return None
     if draft.trajectory is not None and not validate_match(draft.trajectory.requires):
         return None
+    if not validate_match(draft.applies_when):
+        return None
     try:
         return Policy(
             id=f"{lesson.id}-p1",
@@ -95,6 +103,7 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
             match=draft.match,
             trajectory=draft.trajectory,
             rewrite_to=draft.rewrite_to,
+            applies_when=draft.applies_when,
         )
     except Exception:  # Policy validators rejected the shape -> fail closed
         return None
@@ -130,9 +139,13 @@ def synthesize_policy(lesson: Lesson, client: Any | None = None) -> Policy | Non
         return None  # fail closed: no policy rather than a wrong one
 
 
-def _judgment_policy(lesson: Lesson) -> Policy:
+def _judgment_policy(lesson: Lesson, applies_when: Match | None = None) -> Policy:
     """Build a Stop judgment policy directly from the lesson (no LLM needed): the
-    gate is deterministic, the verdict prompt is the rule itself (auditable)."""
+    gate is deterministic, the verdict prompt is the rule itself (auditable).
+
+    `applies_when` is an optional relevance gate (#5): when set, the rule is only
+    asked of the model if the turn's tool activity matches it (else skipped for
+    free). Default None = always relevant (today's behavior, no regression)."""
     return Policy(
         id=f"{lesson.id}-p1",
         lesson_id=lesson.id,
@@ -141,6 +154,7 @@ def _judgment_policy(lesson: Lesson) -> Policy:
         check_kind=CheckKind.JUDGMENT,
         decision=Decision.DENY,
         message=lesson.what_to_do_instead,
+        applies_when=applies_when,
         judgment_prompt=(
             f"Requirement: {lesson.what_to_do_instead}. "
             f"(The user flagged this because: {lesson.what_was_wrong}.) "

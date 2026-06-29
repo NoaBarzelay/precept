@@ -14,7 +14,7 @@ import fnmatch
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import paths
 from .adapters import claude_code as cc
@@ -132,24 +132,56 @@ def _last_assistant_text(entries: list[dict[str, Any]]) -> str:
     return ""
 
 
-def _judge(prompt: str, context: str):
+def _consolidated_judge(questions: list[dict[str, Any]], context: str):
     """Lazy bridge to the judgment model — keeps the deterministic path stdlib;
-    the anthropic SDK is imported only when a judgment policy is actually in play."""
+    the anthropic SDK / judge is imported ONLY when there are AI questions to ask
+    this turn (the caller returns before reaching here if `questions` is empty)."""
     from . import judge
 
-    return judge.verdict(prompt, context)
+    qs = [judge.Question(**q) for q in questions]
+    return judge.consolidated_verdict(qs, context)
 
 
-def _judgment_context(final: str, calls: list[tuple[str, dict[str, Any]]]) -> str:
+def _stop_context(final: str, calls: list[tuple[str, dict[str, Any]]]) -> str:
     tools = "; ".join(f"{n}({json.dumps(i)[:120]})" for n, i in calls[-10:]) or "(none)"
     return f"Final assistant message:\n{final}\n\nRecent tool calls: {tools}"
 
 
-def evaluate_stop_entries(entries: list[dict[str, Any]], policies: list[dict[str, Any]]) -> dict:
+def _ok(v: Any) -> bool:
+    """Read `ok` whether the verdict is a pydantic QuestionVerdict (production) or a
+    plain dict (the eval harness / tests inject dicts). Keeps enforce stdlib-only."""
+    got = getattr(v, "ok", None)
+    if got is None and isinstance(v, dict):
+        got = v.get("ok")
+    return bool(got)
+
+
+def _reason(v: Any) -> str:
+    got = getattr(v, "reason", None)
+    if got is None and isinstance(v, dict):
+        got = v.get("reason")
+    return got or ""
+
+
+def evaluate_stop_entries(
+    entries: list[dict[str, Any]],
+    policies: list[dict[str, Any]],
+    verdict_fn: Callable[[list, str], dict | None] | None = None,
+) -> dict:
     """Evaluate Stop rules over already-parsed transcript entries (also used by the
-    eval harness, which supplies inline transcripts). Two kinds:
-      - trajectory: deterministic ("X must have happened before the success claim")
-      - judgment:   an LLM {ok,reason} verdict at the gate ("no stub code left")."""
+    eval harness, which supplies inline transcripts).
+
+    Flow: run the cheap deterministic gates first to decide WHICH AI questions
+    actually need asking, then ask the model ONCE (a single consolidated verdict
+    over all questions). Block on the first violation in question order.
+      - trajectory: deterministic half asks "did a call matching `requires` happen?".
+        If UNMET, an AI 'claim' question asks "is the agent claiming completion?".
+      - judgment:   an optional `applies_when` relevance gate skips the rule for FREE
+        when no tool call this turn matches; otherwise a 'standard' question is asked.
+
+    `verdict_fn(questions, context) -> {id: verdict} | None` is the injection seam:
+    production leaves it None (the real lazy judge); tests/eval pass a fake. FAIL
+    OPEN: a None/empty result never blocks (never wedge the session)."""
     traj = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory"]
     judg = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "judgment"]
     if not traj and not judg:
@@ -158,22 +190,52 @@ def evaluate_stop_entries(entries: list[dict[str, Any]], policies: list[dict[str
     calls = _transcript_tool_calls(entries)
     final = _last_assistant_text(entries)
 
-    for p in traj:  # deterministic first (cheap, no model call)
+    # 1. Deterministic gates -> collect the AI questions that actually need asking.
+    questions: list[dict[str, Any]] = []
+    by_id: dict[str, dict[str, Any]] = {}
+
+    for p in traj:
         spec = p.get("trajectory") or {}
         requires = spec.get("requires")
-        claim = spec.get("claim_pattern", "")
         satisfied = any(_matches(requires, name, inp) for name, inp in calls)
-        claiming = bool(claim) and _check(final, "regex", claim)
-        if claiming and not satisfied:
-            return cc.stop_block(p.get("message", "A required step has not been completed."))
+        if satisfied:
+            continue  # requirement met -> rule moot, no question
+        # Requirement UNMET: the claim/intent decision is an AI verdict (#4).
+        questions.append({
+            "id": p["id"],
+            "kind": "claim",
+            "prompt": p.get("message") or "The required step did not happen before finishing.",
+        })
+        by_id[p["id"]] = p
 
-    if judg:  # judgment verdicts (fail open: a None verdict never blocks)
-        context = _judgment_context(final, calls)
-        for p in judg:
-            v = _judge(p.get("judgment_prompt", ""), context)
-            if v is not None and not v.ok:
-                return cc.stop_block(p.get("message") or v.reason or "A required standard was not met.")
+    for p in judg:
+        aw = p.get("applies_when")  # #5 relevance gate
+        if aw is not None and not any(_matches(aw, n, i) for n, i in calls):
+            continue  # not relevant this turn -> skip for FREE (no question, no model)
+        questions.append({
+            "id": p["id"],
+            "kind": "standard",
+            "prompt": p.get("judgment_prompt", ""),
+        })
+        by_id[p["id"]] = p
 
+    # 2. All-deterministic fast path: nothing to ask -> allow, zero model import.
+    if not questions:
+        return cc.stop_allow()
+
+    # 3. ONE verdict call (fail open on None/empty).
+    context = _stop_context(final, calls)
+    vf = verdict_fn or _consolidated_judge
+    result = vf(questions, context)
+    if not result:
+        return cc.stop_allow()
+
+    # 4. Block on the first violation, in question order (trajectory then judgment).
+    for q in questions:
+        v = result.get(q["id"])
+        if v is not None and not _ok(v):  # missing id => ok (default-safe)
+            p = by_id[q["id"]]
+            return cc.stop_block(p.get("message") or _reason(v) or "A required standard was not met.")
     return cc.stop_allow()
 
 

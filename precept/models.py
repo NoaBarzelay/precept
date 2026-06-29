@@ -172,12 +172,19 @@ class Match(BaseModel):
 
 class TrajectorySpec(BaseModel):
     """For CheckKind.TRAJECTORY (Stop hook): a precondition that must have
-    appeared earlier in the session, paired with a claim signal in the final turn.
-    e.g. requires=(a Bash call matching a test runner); claim_pattern detects
-    "it works / done / passing" in the last assistant message."""
+    appeared earlier in the session. The deterministic half asks "did a tool call
+    matching `requires` happen?"; the "is the agent claiming completion?" half is
+    now an AI verdict at the Stop gate (#4), not a regex.
+
+    e.g. requires=(a Bash call matching a test runner)."""
 
     requires: Match
-    claim_pattern: str = Field(description="regex over the final assistant text signalling a success claim")
+    claim_pattern: str | None = Field(
+        default=None,
+        description="DEPRECATED: claim detection is now an AI verdict (#4). Retained "
+        "optional only so old compiled caches / golden cases still load; the enforce "
+        "path IGNORES it.",
+    )
 
 
 class Policy(BaseModel):
@@ -196,6 +203,9 @@ class Policy(BaseModel):
     trajectory: TrajectorySpec | None = None  # TRAJECTORY
     judgment_prompt: str | None = None  # JUDGMENT (the LLM verdict prompt; the card IS auditable)
     rewrite_to: dict[str, str] | None = None  # REWRITE -> updatedInput
+    applies_when: Match | None = None  # JUDGMENT relevance gate (#5): only ask the model
+    #                                    when the turn's tool activity matches (free skip).
+    #                                    Read only for check_kind == JUDGMENT; None = always relevant.
 
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> "Policy":
