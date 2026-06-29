@@ -24,6 +24,10 @@ wasted calls or re-processing.
 **Outcome.** Same per-turn responsiveness, cheap on long sessions, nothing re-processed.
 **Touches.** `detect.py` (cursor + pre-filter), `hooks.py` (pass session_id through),
 `paths.py` (cursor path). Cards stay PENDING, review model unchanged.
+**Note.** The pre-filter regex here is only a cost gate (recall-biased: decides *whether*
+to spend an LLM call), not a semantic classifier. The actual correction classification is
+still the LLM. (Distinct from #4, where the *semantic decision* must be AI, not regex.)
+Revisit if we want the pre-filter AI-based too.
 
 ### 2. Robust hook command paths (install)
 **Why.** `install` writes bare command names (`precept-hook-pretooluse`); if Precept lives
@@ -50,6 +54,43 @@ human. Realistic mechanisms (pick/combine):
   (proactive, in-flow) not WHETHER you approve.
 **Touches.** `hooks.py` (surface via `additionalContext`), `detect.py` (flag "needs
 review"), possibly a SessionStart/UserPromptSubmit hook + its install entry.
+
+### 4. AI-based claim / completion detection (trajectory rules) — NOT regex
+**Decision (Noa 2026-06-29): claim detection must be AI-based, not regex.**
+**Why.** A trajectory rule decides "is the agent claiming success?" via a brittle regex
+(`claim_pattern`): false positives ("not done yet" contains "done"), false negatives
+("shipped it", "ready to merge"), English-only, phrasing-dependent.
+**Fix.** Replace the `claim_pattern` regex with an AI verdict ("is the final message
+claiming the task is complete?"). The deterministic half of a trajectory rule stays
+cheap and transcript-based (did the required tool call happen?); only the claim judgment
+goes to the model.
+**Schema.** `TrajectorySpec.claim_pattern` (regex) deprecated; the claim is judged by AI.
+Keep `requires` (a `Match`) deterministic.
+**Converges with #5.** This claim verdict is folded into the single consolidated Stop
+verdict call, not a separate call per trajectory rule.
+**Touches.** `enforce.py` (evaluate_stop), `judge.py` (claim verdict), `synthesize.py`
+(stop emitting a claim regex), `models.py` (`TrajectorySpec`).
+
+### 5. Judgment-rule scoping + a single batched verdict at Stop
+**Why.** Every active judgment rule currently makes its own Haiku call on every Stop
+(N rules = N calls per turn, most irrelevant, e.g. checking "no stub code" on a turn that
+wrote no code). Does not scale as standing standards ("all my requests") accumulate.
+**Fix.**
+- **Relevance gate:** each judgment rule gets a cheap deterministic `applies_when`
+  condition over the turn's activity ("no stub code" only if an Edit/Write happened;
+  "cite sources" only if a factual answer was given). Irrelevant rules are skipped for
+  free (no model call).
+- **Batch:** evaluate all relevant Stop-time AI verdicts (judgment standards AND the
+  AI claim detections from #4) in ONE consolidated model call per turn ("check these K
+  standards against the final state; return any clearly violated"). Block on the first
+  violation. Bias toward not-blocking (false block is the costly error).
+**Outcome.** Many persistent judgment rules stay cheap: at most one Stop verdict call per
+turn, only when something relevant happened.
+**Touches.** `models.py` (`Policy.applies_when`), `enforce.py` (gate + batch),
+`judge.py` (consolidated-verdict schema).
+
+> **#4 + #5 share one mechanism:** a single consolidated Stop AI verdict call that handles
+> both "is the agent claiming success" (trajectory) and "are the standards met" (judgment).
 
 ## Done
 (none yet)
