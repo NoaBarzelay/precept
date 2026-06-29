@@ -159,3 +159,62 @@ def test_deterministic_stop_path_imports_no_judge_or_anthropic():
     assert out == {}
     assert "precept.judge" not in sys.modules
     assert "anthropic" not in sys.modules
+
+
+# --- Scope-aware enforcement (item C) ---------------------------------------
+import os
+
+_REPO_ROOT = os.path.realpath("/work/myrepo") if os.name != "nt" else "C:\\work\\myrepo"
+REPO_NPM = {
+    **PNPM, "id": "repo-npm", "scope": "repo", "scope_value": _REPO_ROOT,
+}
+
+
+def _bash(command, cwd=None):
+    ev = {"tool_name": "Bash", "tool_input": {"command": command}}
+    if cwd is not None:
+        ev["cwd"] = cwd
+    return ev
+
+
+def test_repo_scoped_policy_fires_inside_repo():
+    out = enforce.evaluate_pretooluse(
+        _bash("npm install x", cwd=os.path.join(_REPO_ROOT, "src")), [REPO_NPM]
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_repo_scoped_policy_skipped_outside_repo():
+    out = enforce.evaluate_pretooluse(_bash("npm install x", cwd="/some/other/dir"), [REPO_NPM])
+    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+def test_repo_scope_skipped_when_cwd_missing():
+    # Inverted fail-open: a repo rule with no cwd can't be placed in its repo -> skip.
+    out = enforce.evaluate_pretooluse(_bash("npm install x"), [REPO_NPM])
+    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+def test_global_policy_fires_with_or_without_cwd():
+    assert enforce.evaluate_pretooluse(_bash("npm install x", cwd="/anywhere"), [PNPM])[
+        "hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert enforce.evaluate_pretooluse(_bash("npm install x"), [PNPM])[
+        "hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+REPO_TRAJ = {**TESTS_BEFORE_DONE, "id": "repo-traj", "scope": "repo", "scope_value": _REPO_ROOT}
+
+
+def test_stop_scope_filter_skips_repo_rule_outside_repo():
+    # Out of scope -> the rule is filtered before any question -> allow (and no verdict_fn).
+    assert enforce.evaluate_stop_entries(
+        _CLAIM, [REPO_TRAJ], verdict_fn=lambda q, c: {"repo-traj": {"ok": False}}, cwd="/elsewhere"
+    ) == {}
+
+
+def test_stop_scope_filter_fires_repo_rule_inside_repo():
+    out = enforce.evaluate_stop_entries(
+        _CLAIM, [REPO_TRAJ], verdict_fn=lambda q, c: {"repo-traj": {"ok": False, "reason": "no tests"}},
+        cwd=os.path.join(_REPO_ROOT, "pkg"),
+    )
+    assert out.get("decision") == "block"

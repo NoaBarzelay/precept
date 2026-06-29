@@ -120,13 +120,15 @@ PreToolUse hook. Auto-pick by shape: clean ban -> permission rule; command-argum
 Touches: `synthesize.py` (classify shape), `install.py`/`compile.py` (write a marker-managed
 permissions block), enforce unchanged (CC enforces permission rules natively).
 
-### C. Scope-aware enforcement, default GLOBAL
-Rules fire only within their scope, using the event's `cwd` (and detected language). DEFAULT
-scope = **global** (fires everywhere) unless the correction specifies narrower (this repo /
-this language). repo-scope stores the repo root; fire only when cwd is inside it. Touches:
-`models.py` (a scope_value alongside the Scope enum), `enforce.py` (filter by cwd before
-matching), `compile.py` (carry scope into policies.json), `detect.py`/`synthesize.py` (set
-scope; default global).
+### C. Scope-aware enforcement, default GLOBAL — DONE (2026-06-29)
+Rules fire only within their scope, using the event's `cwd`. DEFAULT scope = **global**
+(fires everywhere) unless narrower. `models.py` carries `scope`+`scope_value` on Policy
+(and Lesson); `enforce._in_scope` filters every candidate list by cwd before matching
+(repo: cwd at/under the stored root; a repo rule with no usable cwd is SKIPPED — narrower,
+never wider); `compile.py` carries scope/scope_value and skips a repo rule with no root;
+`detect.py` resolves the repo root from the session cwd via `_git_root` and falls back to
+global when it can't. Deferred: real LANGUAGE-scope matching (plumbed as global-for-now
+with an inline TODO — would read package.json/pyproject from cwd in the hot path).
 
 ### D. UserPromptSubmit rules (third hard surface)
 Add UserPromptSubmit as a prompt-time rule surface (e.g. "always include the ticket id").

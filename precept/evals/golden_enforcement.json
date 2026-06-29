@@ -113,5 +113,39 @@
     "transcript": [{"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "parser.py", "old_string": "a", "new_string": "# TODO"}}]}}, {"message": {"role": "assistant", "content": [{"type": "text", "text": "Left a TODO stub."}]}}],
     "injected_verdicts": {"nostub": {"ok": false, "reason": "stub left"}},
     "expect": "block"
+  },
+  {
+    "id": "repo-rule-fires-inside-repo",
+    "description": "a repo-scoped rule fires when cwd is inside its repo root",
+    "kind": "pretooluse",
+    "policies": [{"id": "norepo-npm", "lesson_id": "use-pnpm-here", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm in this repo.", "scope": "repo", "scope_value": "/work/myrepo", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm install left-pad"}, "cwd": "/work/myrepo/src"},
+    "expect": "block"
+  },
+  {
+    "id": "repo-rule-skipped-outside-repo",
+    "description": "the same repo-scoped rule does NOT fire when cwd is outside its repo (out of scope -> allow)",
+    "kind": "pretooluse",
+    "policies": [{"id": "norepo-npm", "lesson_id": "use-pnpm-here", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm in this repo.", "scope": "repo", "scope_value": "/work/myrepo", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm install left-pad"}, "cwd": "/other/place"},
+    "expect": "allow"
+  },
+  {
+    "id": "global-rule-fires-everywhere",
+    "description": "a global rule (no scope_value) fires regardless of cwd",
+    "kind": "pretooluse",
+    "policies": [{"id": "g-npm", "lesson_id": "use-pnpm", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "deny", "message": "Use pnpm.", "scope": "global", "match": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "\\bnpm install"}]}}],
+    "call": {"tool_name": "Bash", "tool_input": {"command": "npm install left-pad"}, "cwd": "/anywhere"},
+    "expect": "block"
+  },
+  {
+    "id": "repo-scoped-stop-skipped-outside",
+    "description": "a repo-scoped Stop trajectory rule is skipped when cwd is outside its repo (no question -> allow)",
+    "kind": "stop",
+    "cwd": "/elsewhere",
+    "policies": [{"id": "rtests", "lesson_id": "tests-first-here", "enforcement_tier": "hard", "hook_event": "Stop", "check_kind": "trajectory", "message": "Run the tests before claiming success.", "scope": "repo", "scope_value": "/work/myrepo", "trajectory": {"requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest"}]}}}],
+    "transcript": [{"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}}],
+    "injected_verdicts": {"rtests": {"ok": false, "reason": "claiming success without tests"}},
+    "expect": "allow"
   }
 ]

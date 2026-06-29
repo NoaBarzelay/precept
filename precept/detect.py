@@ -13,6 +13,7 @@ Design (see DECISIONS.md):
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date as _date
 from typing import Any, Protocol
@@ -20,7 +21,8 @@ from typing import Any, Protocol
 from . import catalog
 from .adapters import claude_code as cc
 from .models import (
-    Determinism, ExtractedLesson, GroundedSignals, Lesson, MaybeLesson, Origin, Status,
+    Determinism, ExtractedLesson, GroundedSignals, Lesson, MaybeLesson, Origin, Scope,
+    Status,
 )
 
 CLASSIFIER_MODEL = "claude-haiku-4-5"  # cheap, schema-constrained extraction
@@ -43,6 +45,12 @@ When you do extract a lesson:
 - determinism: "deterministic" if it could be checked mechanically (a banned/required \
 command, a protected file path); "judgment" if it needs a verdict ("don't leave \
 stub code"); "stylistic" if it's purely about tone/format.
+- scope: default "global" (applies everywhere). Set "repo" ONLY when the correction is \
+explicitly about this project/repo ("in this repo", "for this project"); "language" only \
+when it's explicitly language-specific ("for all node projects"). When in doubt, global.
+- A correction about what the USER'S OWN PROMPT should always contain ("always include \
+the ticket id", "always say which env") is a prompt-time rule; still extract it as a \
+lesson — COMPILE will target it at the prompt surface.
 Reason briefly in chain_of_thought first, then fill the fields."""
 
 
@@ -55,6 +63,24 @@ class _ParseClient(Protocol):  # the slice of the Anthropic client we use (for t
 def _slugify(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return "-".join(s.split("-")[:6]) or "lesson"
+
+
+def _git_root(cwd: str | None) -> str | None:
+    """Walk up from cwd to the nearest dir containing a `.git`; the repo root for a
+    repo-scoped lesson (item C). Stdlib os.path only. None if cwd is empty/not in a repo."""
+    if not cwd:
+        return None
+    try:
+        cur = os.path.realpath(cwd)
+    except OSError:
+        return None
+    while True:
+        if os.path.isdir(os.path.join(cur, ".git")) or os.path.isfile(os.path.join(cur, ".git")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
 
 
 def _user_turns(entries: list[dict[str, Any]]) -> list[str]:
@@ -109,16 +135,29 @@ def classify(context: str, client: _ParseClient | None = None) -> MaybeLesson:
         )
 
 
-def lesson_from_extraction(ex: ExtractedLesson, *, session: str, today: _date | None = None) -> Lesson:
+def lesson_from_extraction(
+    ex: ExtractedLesson, *, session: str, cwd: str | None = None, today: _date | None = None
+) -> Lesson:
     quote = ex.origin_quote.strip()
     imperative = bool(re.search(r"\b(never|always|don'?t|stop|must|use)\b", quote, re.I))
+    # A repo-scoped lesson needs the repo root resolved from the session's cwd so the
+    # enforce-time cwd filter (item C) has a root to test against. If we can't resolve a
+    # root, fall back to GLOBAL (a global rule is safe; a repo rule with no root can't fire).
+    scope, scope_value = ex.scope, None
+    if scope == Scope.REPO:
+        root = _git_root(cwd)
+        if root:
+            scope_value = root
+        else:
+            scope = Scope.GLOBAL
     return Lesson(
         id=_slugify(ex.what_to_do_instead or ex.trigger),
         created=today or _date.today(),
         origin=Origin.CORRECTION,
         source_session=session,
         status=Status.PENDING,
-        scope=ex.scope,
+        scope=scope,
+        scope_value=scope_value,
         durability=ex.durability,
         determinism=ex.determinism,
         artifact_type=ex.proposed_artifact_type,
@@ -136,10 +175,12 @@ def lesson_from_extraction(ex: ExtractedLesson, *, session: str, today: _date | 
 
 
 def detect_from_transcript(
-    transcript_path: str, *, session: str = "", client: _ParseClient | None = None
+    transcript_path: str, *, session: str = "", cwd: str | None = None,
+    client: _ParseClient | None = None,
 ) -> list[Lesson]:
     """Read a transcript, classify, and write any minted lesson as a PENDING card.
-    Returns the minted lessons (empty if abstained or nothing new)."""
+    Returns the minted lessons (empty if abstained or nothing new). `cwd` (the session's
+    working dir, from the hook event) lets a repo-scoped lesson resolve its repo root."""
     entries = cc.read_transcript(transcript_path)
     context = _build_context(entries)
     if not context:
@@ -147,7 +188,7 @@ def detect_from_transcript(
     maybe = classify(context, client)
     if not maybe.is_lesson or maybe.lesson is None:
         return []
-    lesson = lesson_from_extraction(maybe.lesson, session=session or transcript_path)
+    lesson = lesson_from_extraction(maybe.lesson, session=session or transcript_path, cwd=cwd)
     # cheap dedup: don't re-mint an id that already exists (LLM consolidation is later)
     if catalog.card_path(lesson.id).exists():
         return []

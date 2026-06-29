@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -60,9 +61,38 @@ def _check(value: str, op: str, target: str) -> bool:
             return fnmatch.fnmatch(value, target)
         if op == "regex":
             return re.search(target, value) is not None
+        if op == "not_regex":  # matches when the pattern is ABSENT (presence-required rules)
+            return re.search(target, value) is None
     except re.error:
         return False
     return False
+
+
+def _in_scope(policy: dict[str, Any], cwd: str) -> bool:
+    """Scope gate (item C). Default GLOBAL: a policy fires everywhere unless it
+    declares a narrower scope. Missing scope/scope_value => global (back-compat: old
+    caches, and the eval/test callers that pass cwd="", fire all global rules).
+
+    REPO: fire only when cwd is at/under the stored repo root. The fail-OPEN bias is
+    INVERTED here on purpose — a repo-scoped rule with no usable cwd is SKIPPED (we
+    can't confirm we're in its repo), which is narrower, never wider, so it never
+    wedges a session (skipping = allow)."""
+    scope = policy.get("scope") or "global"
+    if scope == "global":
+        return True
+    if scope == "repo":
+        sv = policy.get("scope_value")
+        if not sv or not cwd:
+            return False  # can't place cwd inside the repo -> don't fire a repo rule globally
+        try:
+            cwd_r = os.path.realpath(cwd)
+            root_r = os.path.realpath(sv)
+        except OSError:
+            return False
+        return cwd_r == root_r or cwd_r.startswith(root_r + os.sep)
+    if scope == "language":
+        return True  # TODO(item C follow-up): real language detection from cwd; global for now
+    return True  # unknown scope -> fire (fail-open, never wedge)
 
 
 def _matches(match: dict[str, Any] | None, tool_name: str, tool_input: dict[str, Any]) -> bool:
@@ -81,11 +111,13 @@ def evaluate_pretooluse(event: dict[str, Any], policies: list[dict[str, Any]] | 
     pols = policies if policies is not None else load_compiled()
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {}) or {}
+    cwd = event.get("cwd", "") or ""
 
     hits = [
         p for p in pols
         if p.get("hook_event") == "PreToolUse"
         and p.get("check_kind") == "single_call"
+        and _in_scope(p, cwd)
         and _matches(p.get("match"), tool_name, tool_input)
     ]
     if not hits:
@@ -167,6 +199,7 @@ def evaluate_stop_entries(
     entries: list[dict[str, Any]],
     policies: list[dict[str, Any]],
     verdict_fn: Callable[[list, str], dict | None] | None = None,
+    cwd: str = "",
 ) -> dict:
     """Evaluate Stop rules over already-parsed transcript entries (also used by the
     eval harness, which supplies inline transcripts).
@@ -182,8 +215,14 @@ def evaluate_stop_entries(
     `verdict_fn(questions, context) -> {id: verdict} | None` is the injection seam:
     production leaves it None (the real lazy judge); tests/eval pass a fake. FAIL
     OPEN: a None/empty result never blocks (never wedge the session)."""
-    traj = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory"]
-    judg = [p for p in policies if p.get("hook_event") == "Stop" and p.get("check_kind") == "judgment"]
+    traj = [
+        p for p in policies
+        if p.get("hook_event") == "Stop" and p.get("check_kind") == "trajectory" and _in_scope(p, cwd)
+    ]
+    judg = [
+        p for p in policies
+        if p.get("hook_event") == "Stop" and p.get("check_kind") == "judgment" and _in_scope(p, cwd)
+    ]
     if not traj and not judg:
         return cc.stop_allow()
 
@@ -244,4 +283,4 @@ def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None =
     while the agent is claiming success. Reads the transcript from the event."""
     pols = policies if policies is not None else load_compiled()
     entries = cc.read_transcript(event.get("transcript_path", ""))
-    return evaluate_stop_entries(entries, pols)
+    return evaluate_stop_entries(entries, pols, cwd=event.get("cwd", "") or "")

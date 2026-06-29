@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import catalog, paths
-from .models import EnforcementTier, Lesson, Status
+from .models import EnforcementTier, Lesson, Scope, Status
 from .safety import atomic_write_text
 
 
@@ -21,6 +21,10 @@ def _runtime_policies(lesson: Lesson) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for p in lesson.policies:
         if p.enforcement_tier != EnforcementTier.HARD:
+            continue
+        # A repo-scoped rule with no root can't be enforced (no cwd to test against) ->
+        # skip it (defensive; the model validator already requires it, but never trust).
+        if p.scope == Scope.REPO and not p.scope_value:
             continue
         out.append(p.model_dump(mode="json", exclude_none=True))
     return out

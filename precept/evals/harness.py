@@ -59,16 +59,35 @@ class Report:
 
 def _blocked(case: dict[str, Any]) -> bool:
     pols = case["policies"]
-    if case.get("kind") == "stop":
+    kind = case.get("kind")
+    if kind == "stop":
         # Claim/standard verdicts are AI in production; the golden set stays
         # deterministic by INJECTING a fake verdict map per case (zero LLM). Cases
         # whose deterministic gates yield no questions never reach the verdict_fn.
         injected = case.get("injected_verdicts", {})
         vf = (lambda questions, context: injected)
-        out = enforce.evaluate_stop_entries(case["transcript"], pols, verdict_fn=vf)
+        out = enforce.evaluate_stop_entries(
+            case["transcript"], pols, verdict_fn=vf, cwd=case.get("cwd", "")
+        )
         return out.get("decision") == "block"
+    if kind == "userpromptsubmit":
+        injected = case.get("injected_verdicts", {})
+        vf = (lambda questions, context: injected)
+        out = enforce.evaluate_userpromptsubmit(case["event"], pols, verdict_fn=vf)
+        return out.get("decision") == "block"
+    # PreToolUse. The cwd (when present) rides INSIDE the call event, which
+    # evaluate_pretooluse already reads via event.get("cwd") for scope filtering.
     out = enforce.evaluate_pretooluse(case["call"], pols)
-    return out["hookSpecificOutput"]["permissionDecision"] in ("deny", "ask")
+    hs = out["hookSpecificOutput"]
+    # A rewrite is an allow + updatedInput (NOT a block); when a case asserts the
+    # transformed payload, verify it and count the case as a correctly-handled allow.
+    expect_rewrite = case.get("expect_rewrite")
+    if expect_rewrite is not None:
+        assert hs.get("updatedInput") == expect_rewrite, (
+            f"{case['id']}: expected rewrite {expect_rewrite}, got {hs.get('updatedInput')}"
+        )
+        return False
+    return hs["permissionDecision"] in ("deny", "ask")
 
 
 def run(cases: list[dict[str, Any]]) -> tuple[Report, list[dict[str, Any]]]:
