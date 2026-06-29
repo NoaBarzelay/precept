@@ -4,7 +4,10 @@ and deterministic judgment-policy synthesis — all without a network call."""
 from datetime import date
 
 from precept import enforce, synthesize
-from precept.judge import Verdict, verdict
+from precept.judge import (
+    ConsolidatedVerdict, Question, QuestionVerdict, Verdict,
+    consolidated_verdict, verdict,
+)
 from precept.models import CheckKind, Determinism, HookEvent, Lesson, Origin
 
 
@@ -31,6 +34,15 @@ JUDGMENT_POLICY = {
 
 TRANSCRIPT = [{"message": {"role": "assistant", "content": [{"type": "text", "text": "Done — left a TODO stub in parser.py."}]}}]
 
+# A judgment policy gated to fire only when an Edit happened this turn.
+JUDGMENT_POLICY_GATED = {
+    **JUDGMENT_POLICY, "applies_when": {"tool": "Edit", "conditions": []},
+}
+EDIT_TRANSCRIPT = [
+    {"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "parser.py", "old_string": "a", "new_string": "# TODO"}}]}},
+    {"message": {"role": "assistant", "content": [{"type": "text", "text": "Left a TODO stub."}]}},
+]
+
 
 def test_verdict_parses_and_fails_open():
     v = verdict("rule", "ctx", client=FakeClient(Verdict(reasoning="r", ok=False, reason="stub")))
@@ -38,21 +50,51 @@ def test_verdict_parses_and_fails_open():
     assert verdict("rule", "ctx", client=FakeClient(raises=True)) is None  # fail open
 
 
-def test_enforce_blocks_on_negative_verdict(monkeypatch):
-    monkeypatch.setattr(enforce, "_judge", lambda p, c: Verdict(reasoning="r", ok=False, reason="stub left"))
-    out = enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY])
+def test_consolidated_verdict_parses_and_fails_open():
+    parsed = ConsolidatedVerdict(reasoning="r", verdicts=[QuestionVerdict(id="a", ok=False, reason="x")])
+    out = consolidated_verdict([Question(id="a", kind="standard", prompt="p")], "ctx", client=FakeClient(parsed))
+    assert out["a"].ok is False and out["a"].reason == "x"
+    # a failing client -> None (fail open)
+    assert consolidated_verdict([Question(id="a", kind="standard", prompt="p")], "ctx", client=FakeClient(raises=True)) is None
+    # no questions -> empty map, no client touched
+    assert consolidated_verdict([], "ctx", client=FakeClient(raises=True)) == {}
+
+
+def test_enforce_blocks_on_negative_verdict():
+    out = enforce.evaluate_stop_entries(
+        TRANSCRIPT, [JUDGMENT_POLICY],
+        verdict_fn=lambda q, c: {"j": {"ok": False, "reason": "stub left"}},
+    )
     assert out.get("decision") == "block"
     assert "stub" in out["reason"].lower()
 
 
-def test_enforce_allows_on_positive_verdict(monkeypatch):
-    monkeypatch.setattr(enforce, "_judge", lambda p, c: Verdict(reasoning="r", ok=True))
-    assert enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY]) == {}
+def test_enforce_allows_on_positive_verdict():
+    assert enforce.evaluate_stop_entries(
+        TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=lambda q, c: {"j": {"ok": True}}
+    ) == {}
 
 
-def test_enforce_fails_open_when_judge_unavailable(monkeypatch):
-    monkeypatch.setattr(enforce, "_judge", lambda p, c: None)  # no key / network
-    assert enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY]) == {}
+def test_enforce_fails_open_when_judge_unavailable():
+    assert enforce.evaluate_stop_entries(
+        TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=lambda q, c: None
+    ) == {}
+
+
+def test_judgment_applies_when_skips_for_free():
+    # gate requires an Edit; TRANSCRIPT has none -> rule skipped, model never called.
+    def _boom(q, c):
+        raise AssertionError("verdict_fn must not be called when applies_when does not match")
+
+    assert enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY_GATED], verdict_fn=_boom) == {}
+
+
+def test_judgment_applies_when_fires_when_relevant():
+    out = enforce.evaluate_stop_entries(
+        EDIT_TRANSCRIPT, [JUDGMENT_POLICY_GATED],
+        verdict_fn=lambda q, c: {"j": {"ok": False, "reason": "stub"}},
+    )
+    assert out.get("decision") == "block"
 
 
 def test_judgment_lesson_compiles_without_an_llm():

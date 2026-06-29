@@ -9,7 +9,7 @@ from precept.evals.live import paired_delta
 
 def test_golden_set_is_perfect_on_the_deterministic_subset():
     rep, rows = harness.run_golden()
-    assert rep.n == 12
+    assert rep.n == 14
     assert rep.recall == 1.0, [r for r in rows if r["outcome"].startswith("FN")]
     assert rep.false_block_rate == 0.0, [r for r in rows if r["outcome"].startswith("FP")]
     assert rep.precision == 1.0 and rep.accuracy == 1.0

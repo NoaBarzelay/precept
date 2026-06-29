@@ -27,9 +27,14 @@ TESTS_BEFORE_DONE = {
     "message": "Run the tests before claiming it works.",
     "trajectory": {
         "requires": {"tool": "Bash", "conditions": [{"field": "command", "op": "regex", "value": "pytest|npm test"}]},
-        "claim_pattern": r"(?i)\b(it works|all set|done|passing|fixed)\b",
     },
 }
+
+_CLAIM = [{"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}}]
+_TESTS_RAN = [
+    {"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}},
+    {"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}},
+]
 
 
 def test_pretooluse_denies_matching_call():
@@ -65,25 +70,31 @@ def test_rewrite_applies_updated_input():
     assert out["hookSpecificOutput"]["updatedInput"] == {"command": "pnpm install"}
 
 
-def _transcript(tmp_path, lines):
-    import json
-    p = tmp_path / "t.jsonl"
-    p.write_text("\n".join(json.dumps(x) for x in lines))
-    return str(p)
-
-
-def test_stop_blocks_success_claim_without_tests(tmp_path):
-    tp = _transcript(tmp_path, [
-        {"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}},
-    ])
-    out = enforce.evaluate_stop({"transcript_path": tp}, [TESTS_BEFORE_DONE])
+def test_stop_blocks_success_claim_without_tests():
+    # requirement unmet -> a 'claim' question is asked; the AI verdict says the
+    # agent IS claiming completion (ok=false) -> block.
+    out = enforce.evaluate_stop_entries(
+        _CLAIM, [TESTS_BEFORE_DONE],
+        verdict_fn=lambda q, c: {"p3": {"ok": False, "reason": "claiming done, no tests"}},
+    )
     assert out.get("decision") == "block"
 
 
-def test_stop_allows_when_tests_ran(tmp_path):
-    tp = _transcript(tmp_path, [
-        {"message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}},
-        {"message": {"role": "assistant", "content": [{"type": "text", "text": "All done, it works!"}]}},
-    ])
-    out = enforce.evaluate_stop({"transcript_path": tp}, [TESTS_BEFORE_DONE])
-    assert out == {}  # allowed
+def test_stop_allows_when_tests_ran():
+    # tests ran -> requirement satisfied -> no question -> fast-path allow, no
+    # verdict_fn needed (also proves the deterministic free-skip).
+    assert enforce.evaluate_stop_entries(_TESTS_RAN, [TESTS_BEFORE_DONE]) == {}
+
+
+def test_stop_allows_when_no_claim():
+    # same unmet requirement, but the AI verdict says NOT claiming complete -> allow.
+    assert enforce.evaluate_stop_entries(
+        _CLAIM, [TESTS_BEFORE_DONE], verdict_fn=lambda q, c: {"p3": {"ok": True}}
+    ) == {}
+
+
+def test_stop_fails_open_when_verdict_none():
+    # verdict call fails / returns nothing -> FAIL OPEN, never wedge the session.
+    assert enforce.evaluate_stop_entries(
+        _CLAIM, [TESTS_BEFORE_DONE], verdict_fn=lambda q, c: None
+    ) == {}
