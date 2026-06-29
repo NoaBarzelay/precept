@@ -98,3 +98,57 @@ def test_substitution_draft_compiles_to_rewrite():
 def test_rewrite_draft_without_rewrite_to_is_rejected():
     # The model validator requires rewrite_to for REWRITE -> fail closed (no policy).
     assert synthesize.synthesize_policy(_lesson(), client=FakeClient(_rewrite_draft(None))) is None
+
+
+# --- Shape classifier: hook vs native permission rule (item B) --------------
+def _ban_draft(match, decision=Decision.DENY) -> PolicyDraft:
+    return PolicyDraft(
+        reasoning="ban", can_compile=True,
+        hook_event=HookEvent.PRE_TOOL_USE, check_kind=CheckKind.SINGLE_CALL,
+        decision=decision, message="blocked", match=match,
+    )
+
+
+def test_clean_path_ban_classified_as_permission_rule():
+    m = Match(tool="Read", conditions=[Condition(field="file_path", op=MatchOp.GLOB, value=".env")])
+    p = synthesize.synthesize_policy(_lesson(), client=FakeClient(_ban_draft(m)))
+    assert p is not None and p.permission_rule == "Read(.env)"
+
+
+def test_bash_arg_ban_stays_hook():
+    # CC ignores Bash arg-patterns -> must stay a hook (permission_rule is None).
+    m = Match(tool="Bash", conditions=[Condition(field="command", op=MatchOp.REGEX, value=r"\brm -rf")])
+    p = synthesize.synthesize_policy(_lesson(), client=FakeClient(_ban_draft(m)))
+    assert p is not None and p.permission_rule is None
+
+
+def test_webfetch_domain_ban_to_permission_rule():
+    m = Match(tool="WebFetch", conditions=[Condition(field="url", op=MatchOp.EQUALS, value="evil.com")])
+    p = synthesize.synthesize_policy(_lesson(), client=FakeClient(_ban_draft(m)))
+    assert p is not None and p.permission_rule == "WebFetch(domain:evil.com)"
+
+
+def test_whole_tool_ban_to_bare_permission_rule():
+    p = synthesize.synthesize_policy(
+        _lesson(), client=FakeClient(_ban_draft(Match(tool="WebFetch", conditions=[])))
+    )
+    assert p is not None and p.permission_rule == "WebFetch"
+
+
+def test_regex_path_ban_does_not_convert():
+    # A regex path op can't be safely translated to a gitignore spec -> stay a hook.
+    m = Match(tool="Read", conditions=[Condition(field="file_path", op=MatchOp.REGEX, value=r"\.env")])
+    p = synthesize.synthesize_policy(_lesson(), client=FakeClient(_ban_draft(m)))
+    assert p is not None and p.permission_rule is None
+
+
+def test_permission_rule_excluded_from_hook_cache():
+    from precept import compile as compile_mod
+    from precept.models import Status
+
+    m = Match(tool="Read", conditions=[Condition(field="file_path", op=MatchOp.GLOB, value=".env")])
+    le = synthesize.compile_lesson(_lesson(), client=FakeClient(_ban_draft(m)))
+    le.status = Status.ACTIVE
+    assert compile_mod._runtime_policies(le) == []  # not in the hook interpreter's cache
+    rules = compile_mod._permission_rules(le)
+    assert rules["deny"] == ["Read(.env)"]

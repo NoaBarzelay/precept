@@ -55,6 +55,12 @@ def index_db() -> Path:
     return state_dir() / "index.db"
 
 
+def managed_permissions_manifest() -> Path:
+    """The set of settings.json permission strings Precept last wrote (item B). Lets a
+    re-sync subtract ONLY Precept's own prior entries, never the user's. Local/derived."""
+    return state_dir() / "managed_permissions.json"
+
+
 def claude_home() -> Path:
     """The user's real Claude Code config dir — a COMMIT target."""
     return _env_path("PRECEPT_CLAUDE_HOME", Path.home() / ".claude")

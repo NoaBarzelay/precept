@@ -46,6 +46,11 @@ def parse_permission_rule(rule: str) -> tuple[str, str | None] | None:
     return m.group(1), (m.group(2) if m.group(2) else None)
 
 
+# Boundary note (item B): an imported permission rule becomes a HARD HOOK policy here,
+# NOT a Precept-managed settings.json permission entry. Precept only "adopts" (re-writes
+# as a managed permission) clean bans it SYNTHESIZED from a real correction — never the
+# user's pre-existing permission entries, which it must not claim ownership of. The shape
+# classifier (`synthesize._as_permission_rule`) is therefore invoked only in synthesize.
 def lesson_from_permission(rule: str, decision: Decision, *, today: _date | None = None) -> Lesson | None:
     parsed = parse_permission_rule(rule)
     if not parsed:

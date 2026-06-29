@@ -116,13 +116,20 @@ New deterministic eval cases assert the rewrite payload (harness extended with
 token-substitution rewrite_to shape (regex-replace within a variadic field) so a token swap
 inside `npm install left-pad` can rewrite rather than deny.
 
-### B. Compile clean bans to native `permissions.deny`
-For clean tool+path/domain bans that need NO argument logic (`Read(.env)`, `WebFetch(domain:..)`,
-whole-tool bans), compile to a `permissions.deny` entry in settings.json instead of a
-PreToolUse hook. Auto-pick by shape: clean ban -> permission rule; command-argument logic
-(regex on a Bash command) -> hook (permission Bash-arg patterns are bypassable, per CC docs).
-Touches: `synthesize.py` (classify shape), `install.py`/`compile.py` (write a marker-managed
-permissions block), enforce unchanged (CC enforces permission rules natively).
+### B. Compile clean bans to native `permissions.deny` — DONE (2026-06-29)
+A clean tool+path/domain/whole-tool ban now compiles to a settings.json permission entry
+instead of a hook. `synthesize._as_permission_rule` classifies by SHAPE (deterministic, not
+LLM-chosen): clean `Read/Edit/Write/Glob/Grep` path glob/equals/starts_with -> `Tool(spec)`;
+`WebFetch` host -> `WebFetch(domain:host)`; empty conditions -> bare tool; a Bash-arg or
+regex-path ban -> None (stays a hook, since CC ignores Bash arg-patterns and a regex->gitignore
+translation is unsafe). A `permission_rule` policy is routed to settings.json by `compile_all`
+and EXCLUDED from the hook cache, so `enforce.py` is literally unchanged. `install` syncs a
+marker-managed permissions block via a sidecar manifest in the state dir (idempotent, atomic,
+.bak; subtracts only Precept's own prior strings, never the user's; uninstall is an exact
+inverse). Bootstrap is intentionally left unchanged (imported rules stay hooks — Precept never
+adopts the user's pre-existing permission entries). VERIFIED live: permissions schema
+(deny/ask/allow, `Tool(specifier)`, `WebFetch(domain:)`, gitignore path semantics, and the
+`Bash(command:...)`-is-ignored warning) against code.claude.com/docs/en/permissions.
 
 ### C. Scope-aware enforcement, default GLOBAL — DONE (2026-06-29)
 Rules fire only within their scope, using the event's `cwd`. DEFAULT scope = **global**

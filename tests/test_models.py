@@ -81,6 +81,26 @@ def test_global_scope_rejects_scope_value():
                scope=Scope.GLOBAL, scope_value="/x")
 
 
+def test_permission_rule_only_on_deny_ask_pretooluse():
+    # valid: a deny PreToolUse single_call carrying a permission_rule
+    Policy(id="ok", lesson_id="l", enforcement_tier=EnforcementTier.HARD,
+           hook_event=HookEvent.PRE_TOOL_USE, check_kind=CheckKind.SINGLE_CALL,
+           decision=Decision.DENY, message="m", match=Match(tool="Read"),
+           permission_rule="Read(.env)")
+    # invalid: a rewrite cannot be a permission rule
+    with pytest.raises(ValueError):
+        Policy(id="bad", lesson_id="l", enforcement_tier=EnforcementTier.HARD,
+               hook_event=HookEvent.PRE_TOOL_USE, check_kind=CheckKind.SINGLE_CALL,
+               decision=Decision.REWRITE, message="m", match=Match(tool="Read"),
+               rewrite_to={"file_path": "x"}, permission_rule="Read(.env)")
+    # invalid: a Stop policy cannot be a permission rule
+    with pytest.raises(ValueError):
+        Policy(id="bad2", lesson_id="l", enforcement_tier=EnforcementTier.HARD,
+               hook_event=HookEvent.STOP, check_kind=CheckKind.JUDGMENT,
+               decision=Decision.DENY, message="m", judgment_prompt="p",
+               permission_rule="Read(.env)")
+
+
 def test_repo_scoped_policy_roundtrips_through_catalog():
     le = Lesson(
         id="use-pnpm-here", created=date(2026, 6, 29), origin=Origin.CORRECTION,

@@ -11,13 +11,15 @@ Word-boundary discipline: substring matchers over-match ("npm install" also matc
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
 from .models import (
-    CheckKind, Decision, Determinism, EnforcementTier, HookEvent, Lesson, Match,
-    Policy, TrajectorySpec,
+    CheckKind, Condition, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
+    Match, MatchOp, Policy, TrajectorySpec,
 )
 
 SYNTH_MODEL = "claude-sonnet-4-6"
@@ -95,6 +97,68 @@ def validate_match(match: Match | None) -> bool:
     return all(c.field.split(".")[0] in allowed for c in match.conditions)
 
 
+# --- Shape classifier: hook vs native permission rule (item B) --------------
+# Tools whose path/domain/whole-tool bans Claude Code enforces reliably as a
+# settings.json permission rule. Bash is ABSENT on purpose: CC ignores Bash-arg
+# patterns (Bash(command:...)) with a startup warning, so a Bash ban MUST stay a hook.
+_PERMISSION_SHAPE = {
+    "Read": "path", "Edit": "path", "Write": "path",
+    "Glob": "path", "Grep": "path", "WebFetch": "domain",
+}
+# Only these path ops map cleanly to gitignore-style permission specifiers; a regex
+# ban does NOT (translating a regex to a gitignore glob is unsafe) -> it stays a hook.
+_CLEAN_PATH_OPS = {MatchOp.GLOB, MatchOp.EQUALS, MatchOp.STARTS_WITH}
+_PATH_FIELDS = {"file_path", "pattern", "path"}
+
+
+def _host_of(value: str) -> str | None:
+    """Extract a bare hostname from a WebFetch url condition value (a URL or a host)."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    host = urlparse(v).netloc if "://" in v else v.split("/")[0]
+    host = host.split("@")[-1].split(":")[0].strip()
+    # a bare host only: no path/space/regex metacharacters
+    if not host or "/" in host or " " in host or any(c in host for c in "()[]\\^$+?"):
+        return None
+    return host
+
+
+def _as_permission_rule(match: Match | None, decision: Decision) -> str | None:
+    """Return a settings.json permission string for a CLEAN tool+path/domain/whole-tool
+    ban ('Read(.env)', 'WebFetch(domain:x)', 'WebSearch'), or None if this ban needs
+    argument logic and must stay a PreToolUse hook.
+
+    Only DENY/ASK become permission rules. A Bash.command ban NEVER qualifies (CC ignores
+    Bash arg-patterns -> bypassable). Regex path bans don't convert (conservative — a hook
+    is always a correct fallback)."""
+    if match is None or decision not in (Decision.DENY, Decision.ASK):
+        return None
+    tool = match.tool
+    if tool == "Bash":
+        return None
+    if not match.conditions:  # whole-tool ban -> bare Tool name
+        return tool
+    shape = _PERMISSION_SHAPE.get(tool)
+    if shape is None or len(match.conditions) != 1:
+        return None  # argument logic / unmapped tool -> hook
+    cond = match.conditions[0]
+    op = MatchOp(cond.op) if not isinstance(cond.op, MatchOp) else cond.op
+    if shape == "path":
+        if cond.field not in _PATH_FIELDS or op not in _CLEAN_PATH_OPS:
+            return None
+        spec = cond.value.strip()
+        if not spec or " " in spec:
+            return None
+        # A bare filename/glob passes through (CC path specifiers already use *,**;
+        # bare `.env` == `**/.env`, matching at any depth — exactly what we want).
+        return f"{tool}({spec})"
+    if shape == "domain" and cond.field == "url":
+        host = _host_of(cond.value)
+        return f"WebFetch(domain:{host})" if host else None
+    return None
+
+
 def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
     if not draft.can_compile or draft.hook_event is None or draft.check_kind is None:
         return None
@@ -104,6 +168,16 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
         return None
     if not validate_match(draft.applies_when):
         return None
+    decision = draft.decision or Decision.DENY
+    # Shape classifier (item B): a clean tool+path/domain/whole-tool ban routes to a
+    # native settings.json permission rule (auditable, deterministic — NOT LLM-chosen)
+    # instead of a hook. Only on a deny/ask single-call PreToolUse policy.
+    permission_rule = None
+    if (
+        draft.hook_event == HookEvent.PRE_TOOL_USE
+        and draft.check_kind == CheckKind.SINGLE_CALL
+    ):
+        permission_rule = _as_permission_rule(draft.match, decision)
     try:
         return Policy(
             id=f"{lesson.id}-p1",
@@ -111,7 +185,7 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
             enforcement_tier=EnforcementTier.HARD,
             hook_event=draft.hook_event,
             check_kind=draft.check_kind,
-            decision=draft.decision or Decision.DENY,
+            decision=decision,
             message=draft.message or lesson.what_to_do_instead,
             match=draft.match,
             trajectory=draft.trajectory,
@@ -119,6 +193,7 @@ def _draft_to_policy(lesson: Lesson, draft: PolicyDraft) -> Policy | None:
             applies_when=draft.applies_when,
             scope=lesson.scope,
             scope_value=lesson.scope_value,
+            permission_rule=permission_rule,
         )
     except Exception:  # Policy validators rejected the shape -> fail closed
         return None
