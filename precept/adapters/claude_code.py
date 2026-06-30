@@ -91,6 +91,33 @@ def stop_allow() -> dict:
     return {}  # omitting `decision` lets Claude stop
 
 
+def stop_context(additional_context: str) -> dict:
+    """Allow the stop but inject context (item 3: proactively surface a drafted rule).
+    The Stop hook reads `hookSpecificOutput.additionalContext` like the other surfaces."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "Stop",
+            "additionalContext": additional_context,
+        }
+    }
+
+
+# --- SessionStart -----------------------------------------------------------
+def sessionstart_allow() -> dict:
+    return {}  # nothing to inject this session
+
+
+def sessionstart_context(additional_context: str) -> dict:
+    """SessionStart can only inject context (it cannot block). Used to surface any
+    still-unreviewed drafted rules at the top of a new session (item 3)."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": additional_context,
+        }
+    }
+
+
 # --- UserPromptSubmit decisions ---------------------------------------------
 def userpromptsubmit_allow() -> dict:
     return {}  # exit 0, no output -> the prompt proceeds unchanged

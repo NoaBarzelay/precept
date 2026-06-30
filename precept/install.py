@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
+import sys
 from pathlib import Path
 
 from . import paths
@@ -19,20 +21,50 @@ from .safety import atomic_write_text
 
 _PREFIX = "precept-hook-"
 
-# (event, matcher, command). matcher=None => applies to the whole event.
+# (event, matcher, console-script). matcher=None => applies to the whole event.
 # PreToolUse uses "*" (guard every tool); per-tool narrowing happens in the policy
 # matcher, not the hook matcher, so one hook covers everything.
 _ENTRIES = [
     ("PreToolUse", "*", "precept-hook-pretooluse"),
     ("Stop", None, "precept-hook-stop"),
     ("UserPromptSubmit", None, "precept-hook-userpromptsubmit"),
+    ("SessionStart", None, "precept-hook-sessionstart"),
     ("SessionEnd", None, "precept-hook-sessionend"),
 ]
 
 
+def resolve_command(script: str) -> str:
+    """The ABSOLUTE path Claude Code should invoke for a console script (item 2).
+
+    Claude Code runs hooks with its OWN PATH, which may not include the venv Precept is
+    installed in, so a bare `precept-hook-stop` would silently fail to resolve. We write
+    the absolute path instead. Resolution order:
+      1. a script of that name in the SAME bin dir as the running interpreter (the venv we
+         were installed into — the common, reliable case);
+      2. anything on PATH (shutil.which);
+      3. the bare name as a last resort (no worse than before; keeps install non-fatal)."""
+    # NOTE: do NOT resolve() the interpreter symlink — a venv's python is a symlink into
+    # the base framework, but the console scripts live next to the SYMLINK in the venv bin.
+    bindir = Path(sys.executable).parent
+    candidate = bindir / script
+    if candidate.exists() and os.access(candidate, os.X_OK):
+        return str(candidate.resolve()) if candidate.is_symlink() else str(candidate)
+    found = shutil.which(script)
+    if found:
+        return str(Path(found).resolve())
+    return script  # fall back to the bare name (install never hard-fails)
+
+
+def _is_precept_command(command: str) -> bool:
+    """True for a Precept hook command whether written as a bare console-script name
+    (`precept-hook-stop`) or an absolute path to it (`/venv/bin/precept-hook-stop`, item 2).
+    We key on the BASENAME so the prefix-strip stays an exact inverse across both forms."""
+    return os.path.basename(str(command)).startswith(_PREFIX)
+
+
 def _is_precept_entry(entry: dict) -> bool:
     return isinstance(entry, dict) and any(
-        isinstance(h, dict) and str(h.get("command", "")).startswith(_PREFIX)
+        isinstance(h, dict) and _is_precept_command(h.get("command", ""))
         for h in entry.get("hooks", [])
     )
 
@@ -58,7 +90,9 @@ def apply_install(settings: dict) -> dict:
     """Idempotent: strip any prior Precept entries, then add fresh ones."""
     out = strip_precept(settings)
     hooks = out.setdefault("hooks", {})
-    for event, matcher, command in _ENTRIES:
+    for event, matcher, script in _ENTRIES:
+        # Write the ABSOLUTE path (item 2) so a venv not on Claude Code's PATH still resolves.
+        command = resolve_command(script)
         entry: dict = {"hooks": [{"type": "command", "command": command}]}
         if matcher is not None:
             entry = {"matcher": matcher, **entry}

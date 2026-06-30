@@ -49,6 +49,7 @@ def _transcript(tmp_path, turns):
 
 def test_detect_mints_pending_lesson(tmp_path, monkeypatch):
     monkeypatch.setenv("PRECEPT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PRECEPT_STATE_DIR", str(tmp_path / "state"))  # isolate cursor/lock
     tp = _transcript(tmp_path, ["never use npm, use pnpm"])
     minted = detect.detect_from_transcript(tp, session="s1", client=FakeClient(_maybe_lesson()))
     assert len(minted) == 1
@@ -61,7 +62,9 @@ def test_detect_mints_pending_lesson(tmp_path, monkeypatch):
 
 def test_detect_abstains(tmp_path, monkeypatch):
     monkeypatch.setenv("PRECEPT_HOME", str(tmp_path / "home"))
-    tp = _transcript(tmp_path, ["thanks, looks great"])
+    monkeypatch.setenv("PRECEPT_STATE_DIR", str(tmp_path / "state"))  # isolate cursor/lock
+    # "no, that's wrong" trips the pre-filter so the classifier (which abstains) is reached.
+    tp = _transcript(tmp_path, ["no, that looks wrong"])
     abstain = MaybeLesson(chain_of_thought="just praise", is_lesson=False, abstain_reason="no correction")
     assert detect.detect_from_transcript(tp, client=FakeClient(abstain)) == []
 
@@ -72,7 +75,9 @@ def test_classify_fails_closed_on_error():
     assert "fail-closed" in (out.abstain_reason or "")
 
 
-def test_provenance_gate_ignores_empty_transcript(tmp_path):
+def test_provenance_gate_ignores_empty_transcript(tmp_path, monkeypatch):
+    monkeypatch.setenv("PRECEPT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("PRECEPT_STATE_DIR", str(tmp_path / "state"))  # isolate cursor/lock
     p = tmp_path / "empty.jsonl"
     p.write_text("")
     assert detect.detect_from_transcript(str(p), client=FakeClient(_maybe_lesson())) == []

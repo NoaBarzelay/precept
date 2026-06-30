@@ -78,11 +78,13 @@ def test_not_regex_op():
 
 
 def test_install_registers_userpromptsubmit():
+    import os
+
     s = install.apply_install({})
-    cmds = [h.get("command")
-            for entries in s.get("hooks", {}).values()
-            for e in entries for h in e.get("hooks", [])]
-    assert "precept-hook-userpromptsubmit" in cmds
+    names = [os.path.basename(h.get("command", ""))
+             for entries in s.get("hooks", {}).values()
+             for e in entries for h in e.get("hooks", [])]
+    assert "precept-hook-userpromptsubmit" in names  # absolute path now (item 2)
     assert "UserPromptSubmit" in s["hooks"]
 
 
