@@ -64,8 +64,9 @@ def lesson_from_permission(rule: str, decision: Decision, *, today: _date | None
     if not validate_match(match):
         return None
     verb = "Deny" if decision == Decision.DENY else "Confirm"
+    slug = _slugify(f"{verb}-{tool}-{pattern or 'all'}")
     lesson = Lesson(
-        id=_slugify(f"{verb}-{tool}-{pattern or 'all'}"),
+        id=slug,
         created=today or _date.today(),
         origin=Origin.BOOTSTRAP, source_session="bootstrap:settings.json",
         status=Status.PENDING, artifact_type=ArtifactType.RULE,
@@ -77,8 +78,8 @@ def lesson_from_permission(rule: str, decision: Decision, *, today: _date | None
         origin_quote=rule,
         signals=GroundedSignals(deterministic_by_construction=True),
         policies=[Policy(
-            id=f"{_slugify(f'{verb}-{tool}-{pattern or 'all'}')}-p1",
-            lesson_id=_slugify(f"{verb}-{tool}-{pattern or 'all'}"),
+            id=f"{slug}-p1",
+            lesson_id=slug,
             enforcement_tier=EnforcementTier.HARD, hook_event=HookEvent.PRE_TOOL_USE,
             check_kind=CheckKind.SINGLE_CALL, decision=decision,
             message=f"Blocked by your imported permission rule: {tool}({pattern or ''}).",

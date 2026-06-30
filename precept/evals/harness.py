@@ -65,14 +65,16 @@ def _blocked(case: dict[str, Any]) -> bool:
         # deterministic by INJECTING a fake verdict map per case (zero LLM). Cases
         # whose deterministic gates yield no questions never reach the verdict_fn.
         injected = case.get("injected_verdicts", {})
-        vf = (lambda questions, context: injected)
+        def vf(questions, context, _v=injected):
+            return _v
         out = enforce.evaluate_stop_entries(
             case["transcript"], pols, verdict_fn=vf, cwd=case.get("cwd", "")
         )
         return out.get("decision") == "block"
     if kind == "userpromptsubmit":
         injected = case.get("injected_verdicts", {})
-        vf = (lambda questions, context: injected)
+        def vf(questions, context, _v=injected):
+            return _v
         out = enforce.evaluate_userpromptsubmit(case["event"], pols, verdict_fn=vf)
         return out.get("decision") == "block"
     # PreToolUse. The cwd (when present) rides INSIDE the call event, which

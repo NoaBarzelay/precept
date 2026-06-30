@@ -149,12 +149,12 @@
   },
   {
     "id": "edit-field-rewrite",
-    "description": "an Edit field substitution rewrites the new_string wholesale",
+    "description": "an Edit field rewrite merges over the original input, preserving sibling fields (file_path, old_string)",
     "kind": "pretooluse",
     "policies": [{"id": "rw-edit", "lesson_id": "use-rg", "enforcement_tier": "hard", "hook_event": "PreToolUse", "check_kind": "single_call", "decision": "rewrite", "message": "Use rg, not grep.", "rewrite_to": {"new_string": "rg pattern"}, "match": {"tool": "Edit", "conditions": [{"field": "new_string", "op": "equals", "value": "grep pattern"}]}}],
     "call": {"tool_name": "Edit", "tool_input": {"file_path": "run.sh", "old_string": "x", "new_string": "grep pattern"}},
     "expect": "allow",
-    "expect_rewrite": {"new_string": "rg pattern"}
+    "expect_rewrite": {"file_path": "run.sh", "old_string": "x", "new_string": "rg pattern"}
   },
   {
     "id": "repo-scoped-stop-skipped-outside",

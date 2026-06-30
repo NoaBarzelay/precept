@@ -11,14 +11,13 @@ Word-boundary discipline: substring matchers over-match ("npm install" also matc
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
 from .models import (
-    CheckKind, Condition, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
+    CheckKind, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
     Match, MatchOp, Policy, TrajectorySpec,
 )
 

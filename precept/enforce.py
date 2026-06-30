@@ -131,7 +131,11 @@ def evaluate_pretooluse(event: dict[str, Any], policies: list[dict[str, Any]] | 
     if decision == "ask":
         return cc.pretooluse_ask(reason)
     if decision == "rewrite" and winner.get("rewrite_to"):
-        return cc.pretooluse_rewrite(winner["rewrite_to"], reason)
+        # updatedInput REPLACES the tool's arguments wholesale (per the hook contract),
+        # so a partial rewrite_to must be MERGED over the original input or it would drop
+        # the sibling fields (e.g. a {new_string: ...} rewrite would erase file_path).
+        merged = {**tool_input, **winner["rewrite_to"]}
+        return cc.pretooluse_rewrite(merged, reason)
     return cc.pretooluse_allow()
 
 
