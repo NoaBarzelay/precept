@@ -102,6 +102,27 @@ def context_rules_path() -> Path:
     return precept_home() / "context_rules.json"
 
 
+def event_log() -> Path:
+    """Append-only JSONL of one line per guarded tool call (item B-1): {ts, tool, session,
+    cwd, file_path, bash_cmd, skill_name}. Derived/disposable telemetry -> the local state
+    dir, never the synced vault. `precept report` reads it."""
+    return state_dir() / "events.jsonl"
+
+
+def health_stamp() -> Path:
+    """Timestamp of the last system-health (file-staleness) check (item B-3). A once-per-day
+    THROTTLE reads/writes this so the reminder can ride SessionStart without nagging.
+    Derived/disposable/local (state dir, never the synced vault)."""
+    return state_dir() / "health_check.stamp"
+
+
+def watched_files_config() -> Path:
+    """Optional JSON list of file paths the system-health check watches for staleness
+    (item B-3). Authored CONFIG (the paths are user-specific and supplied at runtime — the
+    repo ships none), so it lives in precept_home. May also come from $PRECEPT_WATCHED_FILES."""
+    return precept_home() / "watched_files.json"
+
+
 def claude_home() -> Path:
     """The user's real Claude Code config dir — a COMMIT target."""
     return _env_path("PRECEPT_CLAUDE_HOME", Path.home() / ".claude")

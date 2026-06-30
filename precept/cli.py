@@ -339,6 +339,22 @@ def context_remove(rule_id: str) -> None:
 
 
 @app.command()
+def report(
+    days: int = typer.Option(7, help="window in days (default 7)"),
+    root: str = typer.Option(None, help="count Edit/Write under this root (CONFIGURABLE; no default)"),
+    memory_regex: str = typer.Option(None, help="regex marking 'memory' files to count edits to (CONFIGURABLE)"),
+    skill_regex: str = typer.Option(None, help="regex for skill SKILL.md Read paths (defaults to the CC convention)"),
+) -> None:
+    """Activity scorecard (item B-2): read the tool-call event log and print a markdown
+    summary for the last N days. Every root/pattern is a flag — Precept ships no literals."""
+    from . import telemetry
+
+    console.print(telemetry.build_report(
+        days=days, root=root, memory_regex=memory_regex, skill_regex=skill_regex
+    ))
+
+
+@app.command()
 def version() -> None:
     console.print(__version__)
 
