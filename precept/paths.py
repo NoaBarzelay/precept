@@ -95,11 +95,11 @@ def managed_permissions_manifest() -> Path:
     return state_dir() / "managed_permissions.json"
 
 
-def managed_claude_md_manifest() -> Path:
-    """The set of `.claude/rules/*.md` convention files Precept last wrote (artifact #3).
-    Lets a re-sync / uninstall delete ONLY files Precept created, never the user's own
-    rules files. Local/derived/rebuildable."""
-    return state_dir() / "managed_claude_md.json"
+def managed_conventions_manifest() -> Path:
+    """The set of `.claude/rules/*.md` convention files Precept last wrote (the CONVENTION
+    artifact). Lets a re-sync / uninstall delete ONLY files Precept created, never the
+    user's own rules files. Local/derived/rebuildable."""
+    return state_dir() / "managed_conventions.json"
 
 
 def claude_home() -> Path:

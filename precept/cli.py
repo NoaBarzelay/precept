@@ -82,12 +82,12 @@ def keep(lesson_id: str) -> None:
     n = _compile.compile_all()
     tier = "HARD (enforced)" if le.policies else "soft (steered)"
     console.print(f"[green]Kept[/green] {le.id} -> {tier}. Recompiled {n} active policies.")
-    # A SOFT convention (#3) lands as context in a Precept-owned rules file — name it so
+    # A SOFT convention lands as context in a Precept-owned rules file — name it so
     # "soft (steered)" is concrete, not vague.
-    if le.artifact_type == ArtifactType.CLAUDE_MD and not le.policies:
-        from . import claude_md
+    if le.artifact_type == ArtifactType.CONVENTION and not le.policies:
+        from . import convention
 
-        dest = claude_md.target_for(le)
+        dest = convention.target_for(le)
         if dest is not None:
             console.print(f"  Convention written to [bold]{dest}[/bold] (loaded as context next session).")
 
@@ -223,10 +223,10 @@ def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is 
             raise typer.Exit(1)
     # --- END item 2 -------------------------------------------------------------------
 
-    # Managed SOFT conventions (#3): the Precept-owned `.claude/rules/*.md` files.
-    from . import claude_md as _claude_md
+    # Managed SOFT conventions: the Precept-owned `.claude/rules/*.md` files.
+    from . import convention as _convention
 
-    conv = _claude_md.managed_files()
+    conv = _convention.managed_files()
     if conv:
         console.print(f"\n[bold]Conventions[/bold] ({len(conv)} managed .claude/rules file(s)):")
         for f in conv:

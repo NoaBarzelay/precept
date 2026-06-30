@@ -1,7 +1,8 @@
-"""COMMIT target for the CLAUDE_MD artifact (#3): write a kept *convention* into a
+"""COMMIT target for the CONVENTION artifact: write a kept *convention* into a
 file Claude Code loads as context.
 
-A CLAUDE_MD lesson is the SOFT sibling of a Rule: a standing convention/preference
+A CONVENTION is the SOFT sibling of a Rule (the procedural-memory artifact): a
+standing convention/preference
 ("API handlers live in src/api/", "prefer composition over inheritance") that can't
 be a deterministic gate, so it's delivered as context, never enforced. We never claim
 a tier for it.
@@ -23,7 +24,7 @@ uninstall removes ONLY files Precept created (a repo whose last convention was a
 gets its file deleted), never the user's own `.claude/rules/*.md`.
 
 Boundary (mirrors `bootstrap.py`'s permission boundary): we write back only conventions
-Precept LEARNED. A CLAUDE_MD lesson with origin=BOOTSTRAP was imported FROM the user's
+Precept LEARNED. A CONVENTION lesson with origin=BOOTSTRAP was imported FROM the user's
 own CLAUDE.md, so re-emitting it would duplicate the directive in context — those are
 skipped, exactly as Precept never re-adopts the user's pre-existing permission entries.
 """
@@ -67,7 +68,7 @@ def is_managed(lesson: Lesson) -> bool:
     directives are excluded — they already live in the user's CLAUDE.md (see module
     docstring), so re-emitting them would duplicate context."""
     return (
-        lesson.artifact_type == ArtifactType.CLAUDE_MD
+        lesson.artifact_type == ArtifactType.CONVENTION
         and lesson.status == Status.ACTIVE
         and lesson.origin != Origin.BOOTSTRAP
     )
@@ -117,7 +118,7 @@ def render_file(lessons: list[Lesson], *, globs: list[str] | None = None) -> str
 # ---------------------------------------------------------------------------
 def _load_manifest() -> list[str]:
     try:
-        data = json.loads(paths.managed_claude_md_manifest().read_text(encoding="utf-8"))
+        data = json.loads(paths.managed_conventions_manifest().read_text(encoding="utf-8"))
         if isinstance(data, dict):
             files = data.get("files", [])
             if isinstance(files, list):
@@ -131,7 +132,7 @@ def _save_manifest(files: list[str]) -> None:
     paths.ensure_dirs()
     payload = {"files": sorted(set(files))}
     atomic_write_text(
-        paths.managed_claude_md_manifest(), json.dumps(payload, indent=2) + "\n"
+        paths.managed_conventions_manifest(), json.dumps(payload, indent=2) + "\n"
     )
 
 

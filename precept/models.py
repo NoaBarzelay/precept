@@ -27,17 +27,26 @@ from pydantic import BaseModel, Field, model_validator
 # ---------------------------------------------------------------------------
 class ArtifactType(str, Enum):
     """The 9 things a session can compile into. RULE is the HARD-enforced wedge;
-    the rest are recalled/steered."""
+    CONVENTION is its SOFT sibling (procedural memory: a steering rule/style we
+    can't gate); the rest are recalled/steered."""
 
     RULE = "rule"
     KNOWLEDGE = "knowledge"
-    CLAUDE_MD = "claude_md"
+    CONVENTION = "convention"  # SOFT procedural rule/style -> a Precept-owned .claude/rules file
     SKILL = "skill"
     AGENT_PERSONA = "agent_persona"
     OUTPUT_STYLE = "output_style"
     SLASH_COMMAND = "slash_command"
     MCP_CONFIG = "mcp_config"
     PERMISSION_PROFILE = "permission_profile"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "ArtifactType | None":
+        # Back-compat: the artifact was renamed claude_md -> convention. Old catalog
+        # cards (and any pre-rename callers) still serialize "claude_md"; map them.
+        if value == "claude_md":
+            return cls.CONVENTION
+        return None
 
 
 class EnforcementTier(str, Enum):
