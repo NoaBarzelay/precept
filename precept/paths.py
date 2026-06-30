@@ -13,6 +13,7 @@ Override any path with the matching PRECEPT_* env var (useful for tests).
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -55,6 +56,32 @@ def index_db() -> Path:
     return state_dir() / "index.db"
 
 
+def _session_slug(session_id: str) -> str:
+    """A filesystem-safe slug for a session id (used in per-session cursor/lock
+    filenames). Falls back to 'default' for an empty id so a session-less caller
+    (e.g. a manual `precept detect`) still gets a stable, isolated cursor."""
+    s = re.sub(r"[^A-Za-z0-9_.-]+", "-", session_id or "").strip("-")
+    return s[:128] or "default"
+
+
+def cursors_dir() -> Path:
+    """Per-session DETECT cursors (item 1): the last transcript offset already
+    classified, so each Stop processes only NEW turns. Derived/disposable/local."""
+    return state_dir() / "cursors"
+
+
+def detect_cursor(session_id: str) -> Path:
+    """The cursor file for one session (records the last processed transcript offset)."""
+    return cursors_dir() / f"{_session_slug(session_id)}.json"
+
+
+def detect_lock(session_id: str) -> Path:
+    """A per-session DETECT lock (item 1) so two near-simultaneous Stop events don't
+    double-classify the same turns. A directory created with os.mkdir (atomic) is the
+    lock token; held briefly, stale locks are reclaimed. Derived/disposable/local."""
+    return cursors_dir() / f"{_session_slug(session_id)}.lock"
+
+
 def managed_permissions_manifest() -> Path:
     """The set of settings.json permission strings Precept last wrote (item B). Lets a
     re-sync subtract ONLY Precept's own prior entries, never the user's. Local/derived."""
@@ -67,5 +94,5 @@ def claude_home() -> Path:
 
 
 def ensure_dirs() -> None:
-    for d in (precept_home(), catalog_dir(), notes_dir(), state_dir()):
+    for d in (precept_home(), catalog_dir(), notes_dir(), state_dir(), cursors_dir()):
         d.mkdir(parents=True, exist_ok=True)
