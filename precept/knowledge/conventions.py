@@ -38,9 +38,16 @@ _TYPO_MAP = {
 }
 # Small words that stay lowercase in Title Case (other than at the start).
 _TITLE_MINOR = {
-    "a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of",
-    "on", "or", "the", "to", "vs", "via", "with",
+    "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into",
+    "nor", "of", "on", "or", "per", "than", "the", "to", "via", "vs", "with", "x",
 }
+# Brand/product names that are intentionally all-lowercase (no interior capital to key
+# on): kept as-is rather than Title-Cased or flagged. Alphanumeric brands like `a16z`
+# are also covered by the digit rule below.
+_LOWER_BRANDS = {"npm", "a16z"}
+# A lowercase-hyphenated "slug" filename (e.g. an imported web page,
+# `playbook-the-ai-kill-chain`). These mirror external source URLs and are left as-is.
+_IMPORT_SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)+")
 
 
 @dataclass
@@ -113,12 +120,22 @@ def is_title_case(stem: str) -> bool:
             continue  # numbers / symbols — nothing to capitalize
         if any(c.isupper() for c in core[1:]):
             continue  # intentional internal caps (dltHub, iPhone, gRPC, macOS) — valid
+        if any(c.isdigit() for c in core):
+            continue  # alphanumeric identifier/version token (a16z, v6, gpt4) — valid
         low = core.lower()
+        if low in _LOWER_BRANDS:
+            continue  # known all-lowercase brand (npm)
         if i != 0 and low in _TITLE_MINOR:
             continue  # minor word allowed lowercase mid-title
         if not core[0].isupper():
             return False
     return True
+
+
+def is_import_slug(stem: str) -> bool:
+    """Lowercase-hyphenated slug filename (imported web content). Mirrors source URLs;
+    left as-is, so the auditor does not propose renaming it."""
+    return bool(_IMPORT_SLUG.fullmatch(stem))
 
 
 def has_date_suffix(stem: str) -> bool:

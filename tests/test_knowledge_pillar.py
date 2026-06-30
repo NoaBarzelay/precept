@@ -284,3 +284,22 @@ def test_case_only_rename_is_not_a_collision(tmp_path):
     newnames = [n for _, n in res.renamed]
     assert "CBS/Summer Startup Track.md" in newnames
     assert not res.skipped_collision
+
+
+def test_correct_lowercase_names_are_not_flagged():
+    """Lowercase brands (a16z, npm), version tokens (v6), and minor words (into/from)
+    the user keeps are valid Title Case, not rename violations."""
+    for s in ["a16z", "Agentic AI Security Master v6", "Hyperscaler Entry into AI Security",
+              "Things I Learned from Tim Ferriss Interview with Justin Gary", "npm Supply Chain Notes"]:
+        assert kconv.is_title_case(s), s
+    assert kaudit._to_title_case("a16z fund overview") == "a16z Fund Overview"
+    assert kaudit._to_title_case("npm audit notes") == "npm Audit Notes"
+
+
+def test_import_slug_files_are_left_as_is(tmp_path):
+    v = tmp_path / "vault"; v.mkdir()
+    _write(v, "Career/Startups/playbook-the-ai-kill-chain.md",
+           "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# x\n## Sources\n- x\n")
+    assert kconv.is_import_slug("playbook-the-ai-kill-chain")
+    renames = [f for f in kaudit.audit(v, kconv.ConventionSpec()) if f.kind.name == "RENAME"]
+    assert not renames  # the imported slug mirror file is not proposed for rename

@@ -81,6 +81,10 @@ def _to_title_case(stem: str) -> str:
         core = re.sub(r"[^\w]", "", tok)
         if core and any(c.isupper() for c in core[1:]):
             out.append(tok)  # intentional internal caps (dltHub, iPhone, gRPC) — keep
+        elif core and any(c.isdigit() for c in core):
+            out.append(tok)  # alphanumeric identifier/version (a16z, v6) — keep
+        elif core and core.lower() in conventions._LOWER_BRANDS:
+            out.append(tok)  # all-lowercase brand (npm) — keep
         elif core and core.isupper() and len(core) > 1:
             out.append(tok)  # keep acronyms (VC, AI, ...) as-is
         elif word_index != 0 and tok.lower() in conventions._TITLE_MINOR:
@@ -147,16 +151,18 @@ def audit(vault: str | Path, spec: ConventionSpec | None = None) -> list[Finding
         #    a vault-wide convention), but the exempt system folders are skipped.
         if not exempt:
             reasons: list[RenameReason] = []
-            if spec.english_only and conventions.has_foreign_letters(stem):
-                reasons.append(RenameReason.NON_ENGLISH)
-            if conventions.has_typographic(stem):
-                reasons.append(RenameReason.TYPOGRAPHIC)
-            if spec.no_date_suffix and conventions.has_date_suffix(stem):
-                reasons.append(RenameReason.DATE_SUFFIX)
-            if spec.spaces_not_underscores and "_" in stem:
-                reasons.append(RenameReason.UNDERSCORE)
-            if spec.title_case and not conventions.is_title_case(stem):
-                reasons.append(RenameReason.NOT_TITLE_CASE)
+            # Imported web-slug files mirror their source URLs and are left as-is.
+            if not conventions.is_import_slug(stem):
+                if spec.english_only and conventions.has_foreign_letters(stem):
+                    reasons.append(RenameReason.NON_ENGLISH)
+                if conventions.has_typographic(stem):
+                    reasons.append(RenameReason.TYPOGRAPHIC)
+                if spec.no_date_suffix and conventions.has_date_suffix(stem):
+                    reasons.append(RenameReason.DATE_SUFFIX)
+                if spec.spaces_not_underscores and "_" in stem:
+                    reasons.append(RenameReason.UNDERSCORE)
+                if spec.title_case and not conventions.is_title_case(stem):
+                    reasons.append(RenameReason.NOT_TITLE_CASE)
             if reasons:
                 findings.append(_rename_finding(vault, path, rel, folder, stem, reasons, doc_type, stripped_by_folder))
 
