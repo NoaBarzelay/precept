@@ -120,6 +120,37 @@ Part of the self-improvement pillar; deferred but captured so it's not missed.
 - **supersede:** a newer rule replaces an older one (old marked archived).
 - **conflict-detection:** detect two rules that contradict (the expensive LLM-judge piece).
 
+### 8. Hardcoded vs flexible-AI audit of the whole platform infra (Noa, 2026-06-30)
+**Why.** The single most load-bearing design axis in Precept is *which seams are
+deterministic/hardcoded vs which are flexible LLM calls*. It's been decided ad hoc per
+feature (DETECT=AI, ENFORCE matcher=stdlib, the gate=deterministic + LLM verdict, the
+pre-filter=regex-cost-gate-not-classifier, conflict-detection=LLM-judge). Noa wants a
+deliberate, platform-wide pass instead of case-by-case.
+**Do.** Enumerate every seam that currently makes (or could make) that choice — DETECT,
+COMPILE/synthesize, the Stop/judgment verdict, the consolidated verdict, conflict-detection,
+the detect pre-filter, convention relevance-injection, knowledge retrieval (keyword vs
+vector), routing among soft homes — and for each decide: hardcoded, AI, or AI-gated-by-a-
+deterministic-frame, with the *reason* (precision/cost/capability) written down. Cross-check
+against the existing principle scattered in the routing + gate-decision notes (see
+[[project precept platform]]): hardness = "is there a worthwhile deterministic GATE," and
+the verdict AT the gate may be deterministic OR an LLM call. Output = one doc (e.g.
+docs/DETERMINISM-MAP.md) that becomes the reference the multi-way router is built against.
+**Note.** #4 (pre-filter must stay a cost gate, semantic decision stays AI) and #5 are
+specific instances of this question; this item is the systematic version.
+
+### 9. Token-eval follow-ups (Noa, 2026-06-30)
+From building the token-consumption eval (branch `feat/token-eval`):
+- **Subscription-native view.** The eval frames tokens as the unit and $ as notional (correct
+  for the Claude Code subscription). Next: show usage against the actual subscription
+  quota / rate-limit window if/when that signal is reachable, not just raw token totals.
+- **Meter growth bound.** `token_usage.jsonl` is append-only and unbounded (one line per LLM
+  call). Light for now (~150 B/line, fail-open, no API call at record time), but add cheap
+  rotation/size-cap or periodic roll-up so it can't grow without limit over months.
+- **count_tokens needs a metered key.** `--static --refresh-baseline` (5 count_tokens calls)
+  can't run on the subscription/OAuth token headlessly, so the committed baseline stays `{}`
+  and the static ledger uses the offline estimate. Revisit if an exact baseline is wanted
+  (run once from an env with an API key, commit the snapshot).
+
 ---
 
 ## Decided rule work — queued for the NEXT background build (after the Stop-verdict build lands)

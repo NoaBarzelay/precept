@@ -211,7 +211,8 @@ def tokens(
         rows = tok.static_ledger()
         counted = [r for r in rows if r["method"] == "count_tokens"]
         if not counted:
-            console.print("[red]No API key reachable — cannot compute an authoritative baseline (count_tokens needs a key).[/red]")
+            console.print("[red]No reachable API credentials — cannot compute an authoritative baseline.[/red]")
+            console.print("[dim]count_tokens needs a metered API key; the Claude Code subscription/OAuth token does not expose it headlessly. The offline estimate still works without --refresh-baseline.[/dim]")
             raise typer.Exit(1)
         tok.write_baseline(rows)
         console.print(f"Wrote baseline for {len(counted)} flows -> {tok.BASELINE}")
@@ -225,13 +226,14 @@ def tokens(
             if strict and drifted:
                 raise typer.Exit(1)
             return
-        method = "count_tokens (exact)" if all(r["method"] == "count_tokens" for r in rows) else "OFFLINE ESTIMATE (~chars/4 — no API key; run --refresh-baseline with a key for exact)"
-        t = Table("flow", "model", "fixed overhead (tok)", "$ / 1k calls")
+        method = "count_tokens (exact)" if all(r["method"] == "count_tokens" for r in rows) else "OFFLINE ESTIMATE (~chars/4 — no metered API key; subscription/OAuth can't run count_tokens headlessly)"
+        t = Table("flow", "model", "fixed overhead (tok)", "≈$/1k calls")
         for r in rows:
             usd = "—" if r["usd_per_1k_calls"] is None else f"${r['usd_per_1k_calls']:.4f}"
             t.add_row(r["flow"], r["model"], str(r["overhead_tokens"]), usd)
         console.print(t)
-        console.print(f"\n[bold]Static prompt-cost ledger[/bold] — fixed system+schema cost per flow [dim]({method})[/dim]")
+        console.print(f"\n[bold]Static prompt-cost ledger[/bold] — fixed system+schema TOKENS per flow [dim]({method})[/dim]")
+        console.print("[dim]Tokens are the real unit (they draw down the subscription quota); ≈$ is notional at API rates, a weight proxy.[/dim]")
         if drifted:
             console.print("[red]Drift from baseline:[/red]")
             for d in drifted:
@@ -253,14 +255,17 @@ def tokens(
         console.print(f"[dim]No usage recorded yet. The meter fills as flows run; it lives at {paths.token_usage_log()}.[/dim]")
         console.print("[dim]See the fixed per-flow cost now with `precept tokens --static`.[/dim]")
         return
-    t = Table("flow", "calls", "in tok", "out tok", "in p50/p95", "out p50/p95", "cost $")
+    t = Table("flow", "calls", "in tok", "out tok", "in p50/p95", "out p50/p95", "≈$ notional")
     grand = 0.0
+    tok_total = 0
     for r in rows:
         grand += r["cost_usd"]
+        tok_total += r["in_total"] + r["out_total"]
         t.add_row(r["flow"], str(r["calls"]), str(r["in_total"]), str(r["out_total"]),
                   f"{r['in_p50']}/{r['in_p95']}", f"{r['out_p50']}/{r['out_p95']}", f"${r['cost_usd']:.4f}")
     console.print(t)
-    console.print(f"\n[bold]Live token meter[/bold] — {sum(r['calls'] for r in rows)} calls, total [bold]${grand:.4f}[/bold] (sorted by spend)")
+    console.print(f"\n[bold]Live token meter[/bold] — {sum(r['calls'] for r in rows)} calls, [bold]{tok_total:,} tokens[/bold] (sorted by spend)")
+    console.print(f"[dim]Subscription-billed, so tokens are what count against quota; ≈${grand:.4f} is notional at API rates.[/dim]")
 
 
 @app.command()

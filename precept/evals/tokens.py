@@ -12,8 +12,14 @@ live.py = Tier-2):
     when no API key is reachable (clearly labeled, never passed off as exact).
 
   LIVE METER (Tier-2) — real per-flow input+output tokens captured at every call site by
-    meter.record(), aggregated here into per-flow counts, p50/p95, totals, and USD. This
-    is the variable cost over your actual sessions: which flow dominates the bill.
+    meter.record(), aggregated here into per-flow counts, p50/p95, and totals. This is the
+    variable cost over your actual sessions: which flow dominates token spend.
+
+Billing reality (see meter.py): Precept runs on a Claude Code SUBSCRIPTION, not metered
+API keys — TOKENS are the native unit (they consume the subscription quota), and the USD
+figures are NOTIONAL (at API rates), a weight proxy. One consequence: the static ledger's
+authoritative count_tokens path needs a metered API key; on the subscription/OAuth token
+it falls back to the offline estimate (clearly labeled).
 
 `precept tokens` is the CLI surface (default = live meter; --static = ledger + drift).
 """

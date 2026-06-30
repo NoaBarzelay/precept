@@ -13,8 +13,14 @@ Two non-negotiables:
   - LOCAL/DERIVED. The meter lives in paths.state_dir() (rebuildable, disposable),
     never the synced vault — same rule as the policy cache and SQLite index.
 
-Pricing is the single source of truth here: USD per 1M tokens from the model catalog
-(claude-api skill, 2026-06). cache reads bill ~0.1x input, cache writes ~1.25x input.
+Billing reality: Precept runs on a Claude Code SUBSCRIPTION (OAuth), not metered API
+keys. So the native unit here is TOKENS — they draw down the subscription's usage
+quota / rate limits. The USD figure is NOTIONAL: what the same tokens WOULD cost at
+published per-token API rates. Treat it as a weight/relative-cost proxy for comparing
+flows, not a bill. Tokens lead every readout; dollars are the secondary lens (and the
+real number if you ever point a flow at a metered API key). Rates are the single source
+of truth here (model catalog, claude-api skill, 2026-06); cache reads ~0.1x input,
+cache writes ~1.25x input.
 """
 
 from __future__ import annotations
@@ -33,7 +39,8 @@ JUDGE_VERDICT = "judge.verdict"
 JUDGE_CONSOLIDATED = "judge.consolidated"
 JUDGE_CONFLICT = "judge.conflict"
 
-# USD per 1,000,000 tokens (input, output). Source: model catalog, claude-api skill.
+# NOTIONAL USD per 1,000,000 tokens (input, output) at published API rates — a weight
+# proxy, NOT a bill (Precept bills via the Claude Code subscription). Source: model catalog.
 PRICING: dict[str, dict[str, float]] = {
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
@@ -51,8 +58,9 @@ def cost_usd(
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
 ) -> float:
-    """Price one call. Returns 0.0 for an unpriced model (flagged by callers, not
-    guessed) so a new model can't silently inflate a bogus dollar figure. Note
+    """Notional cost of one call (USD at published API rates — a weight proxy, not a
+    subscription bill). Returns 0.0 for an unpriced model (flagged by callers, not
+    guessed) so a new model can't silently inflate a bogus figure. Note
     `input_tokens` from the SDK is the UNCACHED remainder — cache read/creation are
     separate buckets, billed at their own factors."""
     p = PRICING.get(model)
