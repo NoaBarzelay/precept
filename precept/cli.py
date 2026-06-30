@@ -70,6 +70,7 @@ def keep(lesson_id: str) -> None:
     le = _find(lesson_id)
     le.status = Status.ACTIVE
     le.signals.human_kept = True
+    le.needs_review = False  # item 3: the user has now answered the proactive prompt
     if not le.policies and le.determinism != Determinism.STYLISTIC:
         from . import synthesize  # lazy: only the keep path needs the SDK
 
@@ -108,6 +109,7 @@ def delete(lesson_id: str, hard: bool = typer.Option(False, help="remove the car
     else:
         le.status = Status.ARCHIVED
         le.signals.human_kept = False
+        le.needs_review = False  # item 3: answered (vetoed)
         catalog.write(le)
     n = _compile.compile_all()
     console.print(f"[yellow]{'Removed' if hard else 'Archived'}[/yellow] {le.id}. Recompiled {n} active policies.")
@@ -131,11 +133,20 @@ def bootstrap() -> None:
 
 
 @app.command()
-def detect(transcript: str) -> None:
-    """Classify a session transcript; mint any correction as a PENDING lesson."""
+def detect(
+    transcript: str,
+    session_id: str = typer.Option(None, "--session-id", help="session id (keys the per-session cursor + lock)"),
+    cwd: str = typer.Option(None, "--cwd", help="session working dir (lets a repo-scoped lesson resolve its root)"),
+) -> None:
+    """Classify a session transcript; mint any correction as a PENDING lesson.
+
+    Incremental: only the NEW turns since this session's cursor are classified, gated by a
+    cheap regex pre-filter and a per-session lock (item 1)."""
     from . import detect as _detect
 
-    minted = _detect.detect_from_transcript(transcript, session=transcript)
+    minted = _detect.detect_from_transcript(
+        transcript, session=transcript, session_id=session_id, cwd=cwd
+    )
     if not minted:
         console.print("[dim]No new correction detected (or already in catalog).[/dim]")
         return
@@ -173,8 +184,9 @@ def evals(strict: bool = typer.Option(False, help="exit nonzero on any miss/fals
 
 
 @app.command()
-def doctor() -> None:
-    """Print resolved paths + environment (and check the iCloud-safety invariant)."""
+def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is unreachable (CI gate)")) -> None:
+    """Print resolved paths + environment, check the iCloud-safety invariant, and verify
+    each installed hook command actually resolves (item 2)."""
     console.print(f"precept {__version__}  (python {sys.version.split()[0]})")
     console.print(f"  catalog (source of truth): {paths.catalog_dir()}")
     console.print(f"  state/index (local-only):  {paths.state_dir()}")
@@ -185,6 +197,57 @@ def doctor() -> None:
         console.print("  [red]WARNING: state dir looks cloud-synced — SQLite can corrupt. Set PRECEPT_STATE_DIR to a local path.[/red]")
     else:
         console.print("  [green]state dir is on a local path (safe for SQLite).[/green]")
+
+    # --- BEGIN item 2: hook-reachability checks (additive; safe to relocate) ----------
+    from . import doctor as _doctor
+
+    checks = _doctor.check_hooks()
+    console.print("\n[bold]Hooks[/bold] (settings.json -> reachable entrypoint):")
+    for c in checks:
+        mark = "[green]ok[/green]" if c.ok else "[red]FAIL[/red]"
+        target = c.command if c.command is not None else "(not installed)"
+        console.print(f"  {mark}  {c.event:16} {target}  [dim]{c.detail}[/dim]")
+    if _doctor.all_ok(checks):
+        console.print("  [green]all hooks reachable.[/green]")
+    else:
+        console.print("  [red]Some hooks are not reachable. Run `precept install` (it writes absolute paths).[/red]")
+        if strict:
+            raise typer.Exit(1)
+    # --- END item 2 -------------------------------------------------------------------
+
+
+@app.command()
+def govern(
+    decay_days: int = typer.Option(30, help="propose retiring an active rule that never fired in this many days"),
+    conflicts: bool = typer.Option(False, help="also run LLM conflict-detection over active rules"),
+    apply_decay: str = typer.Option(None, "--apply-decay", help="archive this rule id (decay)"),
+    supersede: tuple[str, str] = typer.Option((None, None), "--supersede", help="OLD NEW: archive OLD, point it at NEW"),
+) -> None:
+    """Rule governance (item 6): surface decay/supersede/conflict PROPOSALS — never
+    auto-applied. Use --apply-decay / --supersede to act on one (then it recompiles)."""
+    from . import governance
+
+    if apply_decay:
+        le = governance.apply_decay(apply_decay)
+        n = _compile.compile_all()
+        console.print(f"[yellow]Archived[/yellow] {le.id} (decayed). Recompiled {n} active policies.")
+        return
+    if supersede and supersede[0] and supersede[1]:
+        old, new = governance.apply_supersede(supersede[0], supersede[1])
+        n = _compile.compile_all()
+        console.print(f"[yellow]Archived[/yellow] {old.id} -> superseded by {new.id}. Recompiled {n}.")
+        return
+
+    decay = governance.propose_decay(threshold_days=decay_days)
+    if decay:
+        console.print("[bold]Decay proposals[/bold] (active, never fired):")
+        for d in decay:
+            console.print(f"  {d.lesson_id}  [dim]{d.reason}[/dim]  -> precept govern --apply-decay {d.lesson_id}")
+    else:
+        console.print("[dim]No decay proposals.[/dim]")
+    if conflicts:
+        for c in governance.detect_conflicts():
+            console.print(f"[red]Conflict[/red] {c.lesson_a} <-> {c.lesson_b}: {c.reason}")
 
 
 @app.command()
@@ -235,7 +298,8 @@ def install() -> None:
 
     p = _install.install_to_file()
     console.print(f"[green]Installed[/green] Precept hooks -> {p} (backup at {p.name}.bak)")
-    console.print("  PreToolUse, Stop, SessionEnd are now wired. Restart any open Claude Code session.")
+    console.print("  PreToolUse, Stop, UserPromptSubmit, SessionStart, SessionEnd are now wired. "
+                  "Restart any open Claude Code session.")
 
 
 @app.command()
