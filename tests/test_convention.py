@@ -9,7 +9,8 @@ import pytest
 
 from precept import convention, compile as compile_mod, install
 from precept.models import (
-    ArtifactType, Determinism, Lesson, Origin, Scope, Status,
+    ArtifactType, CheckKind, Determinism, EnforcementTier, HookEvent, Lesson, Origin,
+    Policy, Scope, Status,
 )
 
 
@@ -66,6 +67,14 @@ def test_is_managed_excludes_bootstrap_pending_and_nonconvention(isolated):
     rule = _conv("rule", "x")
     rule.artifact_type = ArtifactType.RULE
     assert convention.is_managed(rule) is False
+    # A convention that ALSO compiled to a HARD policy must NOT be double-written as soft.
+    enforced = _conv("enforced", "x")
+    enforced.policies = [Policy(
+        id="enforced-p1", lesson_id="enforced", enforcement_tier=EnforcementTier.HARD,
+        hook_event=HookEvent.STOP, check_kind=CheckKind.JUDGMENT, message="m",
+        judgment_prompt="is it satisfied?",
+    )]
+    assert convention.is_managed(enforced) is False
 
 
 # --- rendering -------------------------------------------------------------
@@ -122,6 +131,13 @@ def test_recompile_without_lesson_removes_managed_file_only(isolated):
     convention.write_managed_rules([])  # lesson archived/deleted -> recompile empties it
     assert not (isolated / "rules" / "precept-conventions.md").exists()  # ours gone
     assert user_rule.exists()  # the user's survives
+
+
+def test_oversize_files_flags_large_file(isolated):
+    convention.write_managed_rules([_conv(f"c{i}", f"do thing {i}") for i in range(5)])
+    big = convention.oversize_files(threshold=2)
+    assert big and big[0][1] > 2  # the single conventions file exceeds the tiny threshold
+    assert convention.oversize_files(threshold=1000) == []  # nothing exceeds a huge threshold
 
 
 def test_strip_all_is_exact_inverse(isolated):
