@@ -241,3 +241,46 @@ def test_config_resolves_vault_from_arg_and_env(tmp_path, monkeypatch):
     other = tmp_path / "other"
     other.mkdir()
     assert kconfig.resolve_vault(str(other)) == other.resolve()
+
+
+def test_typography_and_foreign_letters_are_distinguished(tmp_path):
+    """Em dashes are typographic (mechanical fix), not 'non-English'; only real foreign
+    letters (Hebrew) are routed to translation. Brand casing (dltHub) is preserved."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    _write(v, "Career/David Frankel — Deep Research Brief — 2026-04-02.md",
+           "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# Brief\n\n## Sources\n- x\n")
+    _write(v, "Personal/חברים.md", "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# x\n## Sources\n- x\n")
+    _write(v, "Career/dltHub.md", "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# dltHub\n## Sources\n- x\n")
+
+    # unit helpers
+    assert not kconv.has_foreign_letters("David Frankel — Brief")
+    assert kconv.has_typographic("David Frankel — Brief")
+    assert kconv.has_foreign_letters("חברים")
+    assert kconv.is_title_case("dltHub")  # intentional interior caps -> already valid
+    assert kaudit.normalize_stem("Foo — Bar — 2026-04-02") == "Foo - Bar"
+
+    findings = {f.path: f for f in kaudit.audit(v) if f.kind.name == "RENAME"}
+    em = findings["Career/David Frankel — Deep Research Brief — 2026-04-02.md"]
+    assert kaudit.RenameReason.NON_ENGLISH not in em.reasons      # not foreign
+    assert kaudit.RenameReason.TYPOGRAPHIC in em.reasons          # mechanical
+    assert em.proposed_stem == "David Frankel - Deep Research Brief"
+    heb = findings["Personal/חברים.md"]
+    assert kaudit.RenameReason.NON_ENGLISH in heb.reasons
+    assert heb.proposed_stem is None                              # needs AI translation
+
+
+def test_case_only_rename_is_not_a_collision(tmp_path):
+    """A Title-Case-only rename must apply, not be skipped as a collision (the bug a
+    case-insensitive filesystem caused on the real vault)."""
+    v = tmp_path / "vault"
+    v.mkdir()
+    _write(v, "CBS/summer startup track.md",
+           "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# x\n## Sources\n- x\n")
+    # Use an explicit spec so the one-file derivation doesn't switch title_case off.
+    findings = kaudit.audit(v, kconv.ConventionSpec())
+    plan = kaudit.plan_from_findings(findings)
+    res = kaudit.apply_plan(plan, v, dry_run=True, include_notes=True)
+    newnames = [n for _, n in res.renamed]
+    assert "CBS/Summer Startup Track.md" in newnames
+    assert not res.skipped_collision

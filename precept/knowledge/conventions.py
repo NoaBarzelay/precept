@@ -27,6 +27,15 @@ from .index import EXEMPT_FOLDERS, iter_markdown
 # A trailing date suffix like " — 2026-05-28" or "-2026-05-28" or " 2026-05-28".
 _DATE_SUFFIX = re.compile(r"[ \-—_]+\d{4}-\d{2}-\d{2}\s*$")
 _UNDERSCORE = re.compile(r"_")
+# Typographic chars to normalize to ASCII in a filename (the vault convention bans em
+# dashes; curly quotes / ellipsis likewise). These are NOT "non-English" — they are
+# punctuation, fixed by a mechanical rename, not by translation.
+_TYPO_MAP = {
+    "—": "-", "–": "-",   # em / en dash -> hyphen
+    "‘": "'", "’": "'",   # curly single quotes -> straight
+    "“": '"', "”": '"',   # curly double quotes -> straight
+    "…": "...",                 # ellipsis -> three dots
+}
 # Small words that stay lowercase in Title Case (other than at the start).
 _TITLE_MINOR = {
     "a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of",
@@ -57,6 +66,8 @@ class ConventionStats:
     with_underscore: int = 0
     with_date_suffix: int = 0
     non_ascii: int = 0
+    non_latin: int = 0        # contains a real foreign letter (drives english_only)
+    typographic: int = 0      # contains non-ASCII punctuation (em dash, curly quote)
     not_title_case: int = 0
     missing_type: int = 0
     knowledge_count: int = 0
@@ -66,6 +77,26 @@ class ConventionStats:
 
 def is_ascii(text: str) -> bool:
     return all(ord(c) < 128 for c in text)
+
+
+def has_foreign_letters(text: str) -> bool:
+    """True if the text contains a LETTER outside ASCII (a real non-English script like
+    Hebrew). This is what 'non-English' means for the audit — as opposed to mere
+    typographic punctuation (em dash, curly quotes), which is NOT foreign and is fixed
+    mechanically, not translated."""
+    return any(c.isalpha() and ord(c) > 127 for c in text)
+
+
+def has_typographic(text: str) -> bool:
+    """True if the text contains a non-ASCII char that is NOT a letter (em/en dash,
+    curly quote, ellipsis): a mechanical normalization to ASCII, not a translation."""
+    return any(ord(c) > 127 and not c.isalpha() for c in text)
+
+
+def normalize_typography(text: str) -> str:
+    for k, v in _TYPO_MAP.items():
+        text = text.replace(k, v)
+    return text
 
 
 def is_title_case(stem: str) -> bool:
@@ -80,6 +111,8 @@ def is_title_case(stem: str) -> bool:
         core = re.sub(r"[^\w]", "", w)
         if not core or not core[0].isalpha():
             continue  # numbers / symbols — nothing to capitalize
+        if any(c.isupper() for c in core[1:]):
+            continue  # intentional internal caps (dltHub, iPhone, gRPC, macOS) — valid
         low = core.lower()
         if i != 0 and low in _TITLE_MINOR:
             continue  # minor word allowed lowercase mid-title
@@ -119,6 +152,10 @@ def suggest_from_vault(vault: str | Path) -> tuple[ConventionSpec, ConventionSta
             stats.with_date_suffix += 1
         if not is_ascii(stem):
             stats.non_ascii += 1
+        if has_foreign_letters(stem):
+            stats.non_latin += 1
+        if has_typographic(stem):
+            stats.typographic += 1
         if not is_title_case(stem):
             stats.not_title_case += 1
 
@@ -147,7 +184,7 @@ def suggest_from_vault(vault: str | Path) -> tuple[ConventionSpec, ConventionSta
     spec = ConventionSpec(
         spaces_not_underscores=majority_ok(stats.with_underscore, stats.total),
         title_case=majority_ok(stats.not_title_case, stats.total),
-        english_only=majority_ok(stats.non_ascii, stats.total),
+        english_only=majority_ok(stats.non_latin, stats.total),
         no_date_suffix=majority_ok(stats.with_date_suffix, stats.total),
         require_type_frontmatter=majority_ok(stats.missing_type, stats.non_exempt),
         knowledge_requires_sources=majority_ok(

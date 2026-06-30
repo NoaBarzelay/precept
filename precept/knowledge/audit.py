@@ -36,6 +36,7 @@ class FindingKind(str, Enum):
 
 class RenameReason(str, Enum):
     NON_ENGLISH = "non_english"
+    TYPOGRAPHIC = "typographic"   # non-ASCII punctuation (em dash, curly quote) -> ASCII
     DATE_SUFFIX = "date_suffix"
     UNDERSCORE = "underscore"
     NOT_TITLE_CASE = "not_title_case"
@@ -63,6 +64,7 @@ def normalize_stem(stem: str) -> str:
     """Best-effort English-name normalization for the mechanical fixes (underscore /
     date-suffix / title-case). Non-English content is NOT translated here."""
     s = conventions._DATE_SUFFIX.sub("", stem)   # drop a trailing date suffix
+    s = conventions.normalize_typography(s)       # em dash / curly quotes -> ASCII
     s = s.replace("_", " ")                       # underscores -> spaces
     s = re.sub(r"\s+", " ", s).strip()
     return _to_title_case(s)
@@ -77,7 +79,9 @@ def _to_title_case(stem: str) -> str:
             out.append(tok)
             continue
         core = re.sub(r"[^\w]", "", tok)
-        if core and core.isupper() and len(core) > 1:
+        if core and any(c.isupper() for c in core[1:]):
+            out.append(tok)  # intentional internal caps (dltHub, iPhone, gRPC) — keep
+        elif core and core.isupper() and len(core) > 1:
             out.append(tok)  # keep acronyms (VC, AI, ...) as-is
         elif word_index != 0 and tok.lower() in conventions._TITLE_MINOR:
             out.append(tok.lower())
@@ -143,8 +147,10 @@ def audit(vault: str | Path, spec: ConventionSpec | None = None) -> list[Finding
         #    a vault-wide convention), but the exempt system folders are skipped.
         if not exempt:
             reasons: list[RenameReason] = []
-            if spec.english_only and not conventions.is_ascii(stem):
+            if spec.english_only and conventions.has_foreign_letters(stem):
                 reasons.append(RenameReason.NON_ENGLISH)
+            if conventions.has_typographic(stem):
+                reasons.append(RenameReason.TYPOGRAPHIC)
             if spec.no_date_suffix and conventions.has_date_suffix(stem):
                 reasons.append(RenameReason.DATE_SUFFIX)
             if spec.spaces_not_underscores and "_" in stem:
@@ -289,12 +295,21 @@ def apply_plan(
             continue
 
         old_stem = src.stem
-        dst = src.with_name(item.new_stem + src.suffix)
-        if dst.exists() and dst != src:
-            res.skipped_collision.append(item.path)
-            continue
         if old_stem == item.new_stem:
             continue
+        dst = src.with_name(item.new_stem + src.suffix)
+        # A real collision is when `dst` exists AND is a DIFFERENT file. On a
+        # case-insensitive filesystem (APFS) a pure case change ("foo" -> "Foo") makes
+        # `dst.exists()` true while pointing at the SAME inode — that is not a collision.
+        case_only = False
+        if dst.exists() and dst != src:
+            try:
+                case_only = dst.samefile(src)
+            except OSError:
+                case_only = False
+            if not case_only:
+                res.skipped_collision.append(item.path)
+                continue
 
         # Count (dry-run) or rewrite (apply) inbound links; then move the file.
         res.links_rewritten += _rewrite_links_in_vault(
@@ -303,6 +318,13 @@ def apply_plan(
         new_rel = dst.relative_to(vault).as_posix()
         if not dry_run:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            src.replace(dst)  # atomic within the same filesystem
+            if case_only:
+                # Case-only rename on a case-insensitive FS needs a two-step move,
+                # or os.replace is a no-op and the case never changes.
+                tmp = src.with_name(item.new_stem + ".precept-rename-tmp" + src.suffix)
+                src.replace(tmp)
+                tmp.replace(dst)
+            else:
+                src.replace(dst)  # atomic within the same filesystem
         res.renamed.append((item.path, new_rel))
     return res
