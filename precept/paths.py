@@ -82,6 +82,13 @@ def detect_lock(session_id: str) -> Path:
     return cursors_dir() / f"{_session_slug(session_id)}.lock"
 
 
+def knowledge_audit_stamp() -> Path:
+    """Timestamp of the last daily knowledge integrity audit (slice 2). A once-per-day
+    THROTTLE reads/writes this so the audit can ride SessionStart without nagging.
+    Derived/disposable/local (state dir, never the synced vault)."""
+    return state_dir() / "knowledge_audit.stamp"
+
+
 def managed_permissions_manifest() -> Path:
     """The set of settings.json permission strings Precept last wrote (item B). Lets a
     re-sync subtract ONLY Precept's own prior entries, never the user's. Local/derived."""

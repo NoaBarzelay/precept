@@ -311,6 +311,38 @@ class Note(BaseModel):
     source: str = ""
 
 
+class ExtractedKnowledge(BaseModel):
+    """A durable fact/entity worth FILING as a knowledge file (slice 2 capture). The
+    capture step turns this into a `type: knowledge` vault file, auto-routed to a folder."""
+
+    title: str = Field(description="the entity/topic this is about, Title Case (the filename)")
+    body: str = Field(description="the durable knowledge, in a few clear sentences")
+    tags: list[str] = Field(default_factory=list, description="0-3 lowercase topical tags")
+    sources: list[str] = Field(
+        default_factory=list,
+        description="any URLs/citations the user gave; empty if none (NEVER invent one)",
+    )
+
+
+class MaybeKnowledge(BaseModel):
+    """Forced output schema for CAPTURE: `chain_of_thought` FIRST (generated before the
+    verdict), then an explicit abstain path. Bias HARD toward abstaining — a junk knowledge
+    file is worse than a missed one, and capture auto-writes (PENDING) without asking."""
+
+    chain_of_thought: str = Field(description="brief reasoning about whether durable knowledge is present")
+    is_knowledge: bool
+    knowledge: ExtractedKnowledge | None = None
+    abstain_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "MaybeKnowledge":
+        if self.is_knowledge and self.knowledge is None:
+            raise ValueError("is_knowledge=True requires a `knowledge`")
+        if not self.is_knowledge and self.knowledge is not None:
+            raise ValueError("is_knowledge=False must not carry a `knowledge`")
+        return self
+
+
 class ExtractedLesson(BaseModel):
     """What the classifier emits for a single salient correction. The COMPILE
     step turns this into a Lesson + Policies (assigning id/status/signals)."""

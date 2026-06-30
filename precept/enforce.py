@@ -313,11 +313,9 @@ def evaluate_userpromptsubmit(
         p for p in pols
         if p.get("hook_event") == "UserPromptSubmit" and _in_scope(p, cwd)
     ]
-    if not ups:
-        return cc.userpromptsubmit_allow()
 
     synthetic_input = {"prompt": prompt}
-    # 1. Deterministic single_call rules over the prompt text.
+    # 1. Deterministic single_call rules over the prompt text (these can BLOCK).
     for p in ups:
         if p.get("check_kind") == "single_call" and _matches(
             p.get("match"), "UserPromptSubmit", synthetic_input
@@ -328,23 +326,39 @@ def evaluate_userpromptsubmit(
 
     # 2. Judgment prompt rules -> one consolidated verdict (reuse the Stop seam).
     judg = [p for p in ups if p.get("check_kind") == "judgment"]
-    if not judg:
-        return cc.userpromptsubmit_allow()
-    questions = [
-        {"id": p["id"], "kind": "standard", "prompt": p.get("judgment_prompt", "")}
-        for p in judg
-    ]
-    by_id = {p["id"]: p for p in judg}
-    context = f"User prompt:\n{prompt}"
-    vf = verdict_fn or _consolidated_judge
-    result = vf(questions, context)
-    if not result:
-        return cc.userpromptsubmit_allow()
-    for q in questions:
-        v = result.get(q["id"])
-        if v is not None and not _ok(v):
-            p = by_id[q["id"]]
-            return cc.userpromptsubmit_block(
-                p.get("message") or _reason(v) or "Blocked by a Precept prompt rule."
-            )
+    if judg:
+        questions = [
+            {"id": p["id"], "kind": "standard", "prompt": p.get("judgment_prompt", "")}
+            for p in judg
+        ]
+        by_id = {p["id"]: p for p in judg}
+        context = f"User prompt:\n{prompt}"
+        vf = verdict_fn or _consolidated_judge
+        result = vf(questions, context)
+        if result:
+            for q in questions:
+                v = result.get(q["id"])
+                if v is not None and not _ok(v):
+                    p = by_id[q["id"]]
+                    return cc.userpromptsubmit_block(
+                        p.get("message") or _reason(v) or "Blocked by a Precept prompt rule."
+                    )
+
+    # 3. Not blocking -> retrieval injection (slice 2): surface relevant vault knowledge as
+    # additionalContext so the prompt proceeds already grounded. Cheap/bounded + FAIL-OPEN
+    # (no vault/index or any error => inject nothing, exactly the prior allow shape).
+    ctx = _knowledge_retrieval(prompt)
+    if ctx:
+        return cc.userpromptsubmit_context(ctx)
     return cc.userpromptsubmit_allow()
+
+
+def _knowledge_retrieval(prompt: str) -> str | None:
+    """Lazy bridge to the knowledge-pillar retrieval (slice 2). Kept out of the hot
+    deterministic path import; any error yields None (fail-open)."""
+    try:
+        from .knowledge import retrieval
+
+        return retrieval.retrieval_context(prompt)
+    except Exception:
+        return None

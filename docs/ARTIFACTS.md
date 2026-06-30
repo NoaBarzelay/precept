@@ -50,18 +50,27 @@ judgment all work, 100%-recall eval).
 entity-and-data pillar. Today it is freeform notes; the planned upgrade is a *typed*
 entity catalog (projects, domains, people, tools as first-class records).
 
-**When/how used.** Captured by `precept note` or detected from a session; recalled by
-`precept recall` (keyword/BM25 + tag filter). Planned: injected into a session at
-SessionStart/UserPromptSubmit as `additionalContext` when relevant, and exposed via
-an MCP `query_knowledge` tool.
+**When/how used.** Captured by `precept note`, by `precept knowledge capture`, or
+AUTO-CAPTURED from a session (the per-turn detect pass mines durable knowledge worth
+filing, writes it auto-routed + PENDING); recalled by `precept recall` (keyword/BM25 +
+tag filter). INJECTED into a session at SessionStart and UserPromptSubmit as
+`additionalContext` when relevant (bounded BM25 retrieval, local-only). A daily
+`precept audit` (once-per-day throttle) surfaces rename / placement / missing-frontmatter /
+missing-sources / unfiled-knowledge findings as PENDING proposals (never auto-applied). An
+MCP `query_knowledge` tool is still planned.
 
-**Structure.** Precept `Note{id, created, title, body, tags[], source}`: a markdown
-card plus one FTS5 row.
+**Structure.** A `type: knowledge` markdown file IN THE VAULT (frontmatter `updated:` +
+`## Sources`; captured files also carry `precept_status: pending` until confirmed) plus one
+FTS5 row. Entities = folders, relationships = `[[wikilinks]]`. The legacy
+`Note{id,created,title,body,tags[],source}` is the back-compat recall view.
 
-**Infra.** `~/.precept/notes/*.md` (source of truth, sync-safe) + `index.db` FTS5
-(local, derived, rebuildable). Not a native Claude Code construct: Precept owns it.
-SOFT (recalled, never enforced). Keyword-first; sqlite-vec semantic recall is deferred
-until a Recall@k eval demands it.
+**Infra.** ONE knowledge store: the PRIVATE, CONFIGURABLE vault (`PRECEPT_VAULT`) is the
+source of truth (sync-safe markdown); a derived FTS5 `knowledge_index.db` on LOCAL disk
+(rebuildable) makes recall fast. The old `~/.precept/notes` silo is retired — `note/recall/
+reindex` now operate on the vault-backed index. Not a native Claude Code construct: Precept
+owns it. SOFT (recalled/injected, never enforced). Keyword-first; sqlite-vec semantic recall
++ an ANN/HNSW index are deferred (a guarded ANN-watch seam suggests HNSW past ~1M vectors)
+until a Recall@k eval demands them.
 
 ## 3. CLAUDE.md edit  (SOFT, not built)
 

@@ -36,11 +36,22 @@ def stop_main() -> int:
 
 
 def sessionstart_main() -> int:
-    """SessionStart entrypoint (item 3): inject any still-unreviewed drafted rules at the
-    top of a new session, so corrections from a prior session aren't silently forgotten."""
+    """SessionStart entrypoint. Injects, as one additionalContext block:
+      - item 3: any still-unreviewed drafted RULES (so prior-session corrections aren't lost);
+      - slice 2: a bounded RETRIEVAL of relevant vault KNOWLEDGE for the session's opening
+        context (derived from the last user turn in the transcript, when available).
+    Both are FAIL-OPEN; nothing to surface -> emit nothing."""
     try:
-        cc.read_event()  # consume stdin per the contract (payload currently unused)
-        cc.emit(_review_injection(cc.sessionstart_context))
+        event = cc.read_event()
+        parts = [
+            p for p in (
+                _review_injection_text(),
+                _sessionstart_retrieval(event),
+                _sessionstart_audit(),
+            ) if p
+        ]
+        if parts:
+            cc.emit(cc.sessionstart_context("\n\n".join(parts)))
     except Exception:
         pass  # fail open
     return 0
@@ -67,10 +78,66 @@ def _review_injection(wrap) -> dict:
     """Build the proactive-review additionalContext payload (item 3), or {} when there is
     nothing to surface. `wrap` is the surface-specific adapter (stop_context /
     sessionstart_context). Lazy import keeps the no-pending fast path cheap."""
+    ctx = _review_injection_text()
+    return wrap(ctx) if ctx else {}
+
+
+def _review_injection_text() -> str | None:
+    """The proactive-review additionalContext STRING (item 3), or None. Lazy import keeps
+    the no-pending fast path cheap."""
     from . import review
 
-    ctx = review.review_context()
-    return wrap(ctx) if ctx else {}
+    return review.review_context()
+
+
+def _sessionstart_retrieval(event: dict) -> str | None:
+    """Slice 2 retrieval at SessionStart: derive a query from the last user turn in the
+    session transcript (if any) and surface bounded, relevant vault knowledge. FAIL-OPEN
+    (no transcript / no vault / any error -> None)."""
+    try:
+        from . import detect
+        from .knowledge import retrieval
+
+        tp = event.get("transcript_path")
+        if not tp:
+            return None
+        turns = detect._user_turns(cc.read_transcript(tp))
+        if not turns:
+            return None
+        return retrieval.retrieval_context(turns[-1])
+    except Exception:
+        return None
+
+
+def _sessionstart_audit() -> str | None:
+    """Slice 2 daily integrity audit at SessionStart, THROTTLED to once per calendar day.
+    Surfaces a bounded summary of PENDING proposals (rename / placement / missing-frontmatter
+    / missing-sources / unfiled-knowledge) — propose, never auto-apply. FAIL-OPEN: no vault /
+    already-ran-today / any error -> None."""
+    try:
+        from .knowledge import config as kconfig
+        from .knowledge import ops as kops
+
+        if not kops.should_run_today():
+            return None
+        try:
+            vault = kconfig.resolve_vault()
+        except ValueError:
+            return None
+        props = kops.run_daily(vault)  # stamps today; returns the proposals
+        if not props:
+            return None
+        lines = [
+            f"Precept's daily knowledge audit found {len(props)} item(s) to review "
+            "(proposals only — nothing was changed):",
+        ]
+        for p in props[:8]:
+            lines.append(f"  - [{p.kind}] {p.path}: {p.detail}")
+        if len(props) > 8:
+            lines.append(f"  …and {len(props) - 8} more (`precept audit --force`).")
+        return "\n".join(lines)
+    except Exception:
+        return None
 
 
 def _spawn_detect(event: dict) -> None:

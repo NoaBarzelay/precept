@@ -251,6 +251,36 @@ def govern(
 
 
 @app.command()
+def audit(
+    vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)"),
+    force: bool = typer.Option(False, help="run even if the daily audit already ran today"),
+) -> None:
+    """Daily knowledge integrity audit (slice 2): surface rename / placement / missing-
+    frontmatter / missing-sources / unfiled-knowledge findings as PENDING proposals — never
+    auto-applied. Throttled to once per calendar day (use --force to override)."""
+    from .knowledge import ops as kops
+
+    v = _resolve_vault_or_exit(vault)
+    props = kops.run_daily(v, force=force)
+    if props is None:
+        last = kops.last_run_date()
+        console.print(f"[dim]Already audited today (last run {last}). Use --force to re-run.[/dim]")
+        return
+    if not props:
+        console.print("[green]No findings.[/green] Vault is clean and nothing is unfiled.")
+        return
+    t = Table("kind", "path", "detail")
+    for p in props:
+        t.add_row(p.kind, p.path[:40], p.detail[:80])
+    console.print(t)
+    console.print(
+        f"\n[bold]{len(props)} proposal(s)[/bold] — [dim]propose only, nothing was changed. "
+        "Confirm captured knowledge with `precept knowledge confirm <path>`; review renames "
+        "with `precept knowledge audit`.[/dim]"
+    )
+
+
+@app.command()
 def version() -> None:
     console.print(__version__)
 
@@ -261,6 +291,7 @@ def note(title: str, body: str = typer.Option("", help="note body (or pipe via s
     """Capture a knowledge note (markdown source of truth + indexed for recall)."""
     from . import knowledge
 
+    _resolve_vault_or_exit(None)  # notes now live in the vault (one knowledge store)
     text = body or (sys.stdin.read().strip() if not sys.stdin.isatty() else "")
     n = knowledge.add(title, text or title, tags=list(tag))
     console.print(f"[green]Noted[/green] {n.id}" + (f" [{', '.join(n.tags)}]" if n.tags else ""))
@@ -272,6 +303,7 @@ def recall(query: str, tag: str = typer.Option(None), limit: int = typer.Option(
     """Recall knowledge notes by keyword (BM25), optionally filtered by tag."""
     from . import knowledge
 
+    _resolve_vault_or_exit(None)  # recall reads the vault-backed index
     hits = knowledge.search(query, limit=limit, tag=tag)
     if not hits:
         console.print("[dim]No matching notes.[/dim]")
@@ -284,11 +316,14 @@ def recall(query: str, tag: str = typer.Option(None), limit: int = typer.Option(
 
 @app.command()
 def reindex() -> None:
-    """Rebuild the knowledge index from the markdown notes (proves it's derived)."""
+    """Rebuild the vault-backed knowledge index from the markdown (proves it's derived)."""
     from . import knowledge
+    from .knowledge import config as kconfig
 
+    _resolve_vault_or_exit(None)
     n = knowledge.reindex()
-    console.print(f"Rebuilt the knowledge index from markdown: {n} notes -> {paths.index_db()}")
+    console.print(f"Rebuilt the knowledge index from the vault markdown: "
+                  f"{n} docs -> {kconfig.knowledge_index_db()}")
 
 
 @app.command()
@@ -394,6 +429,46 @@ def knowledge_audit(vault: str = typer.Option(None, help="vault root (else $PREC
         f"(scanned {stats.total} docs, {stats.non_exempt} non-exempt). "
         "[dim]Dry-run only — nothing was changed.[/dim]"
     )
+
+
+@knowledge_app.command("confirm")
+def knowledge_confirm(
+    path: str,
+    vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)"),
+) -> None:
+    """Confirm a PENDING captured knowledge file (strip its `precept_status: pending`),
+    promoting it to a final knowledge file. `path` is vault-relative or absolute."""
+    from .knowledge import store
+
+    v = _resolve_vault_or_exit(vault)
+    target = (v / path) if not str(path).startswith("/") else __import__("pathlib").Path(path)
+    if not target.exists():
+        console.print(f"[red]No such file: {target}[/red]")
+        raise typer.Exit(1)
+    if not store.is_pending(target):
+        console.print(f"[dim]{target.name} is already confirmed (not pending).[/dim]")
+        return
+    store.confirm(target)
+    console.print(f"[green]Confirmed[/green] {target.relative_to(v).as_posix()} (now final).")
+
+
+@knowledge_app.command("capture")
+def knowledge_capture(
+    title: str,
+    body: str = typer.Option(..., help="the durable knowledge body"),
+    vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)"),
+    tag: list[str] = typer.Option([], help="repeatable"),
+) -> None:
+    """Manually file a PENDING knowledge file (auto-routed to the best folder). Same path
+    the per-turn capture uses; useful for testing routing."""
+    from .knowledge import store
+
+    _resolve_vault_or_exit(vault)
+    res = store.file_knowledge(title, body, tags=list(tag) or None, pending=True)
+    route = (f"routed -> {res.folder} (conf {res.confidence:.2f})"
+             if res.routed else f"new/default folder -> {res.folder}")
+    console.print(f"[green]Captured PENDING[/green] {res.rel}  [dim]({route})[/dim]")
+    console.print(f"Confirm with: [bold]precept knowledge confirm \"{res.rel}\"[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -285,6 +285,10 @@ def detect_from_transcript(
         write_cursor(sid, len(entries))
 
         new_turns = _user_turns(new_entries)
+        # KNOWLEDGE CAPTURE (slice 2) rides the same provenance-filtered NEW user turns:
+        # mine durable knowledge worth filing into the vault (its own pre-filter + LLM call,
+        # both fail-OPEN), independent of whether a rule correction is also present.
+        _capture_knowledge(new_turns)
         # PRE-FILTER cost gate: only spend an LLM call when a correction is plausible in
         # the NEW user turns. (No new user turns at all -> nothing to classify.)
         if not new_turns or not looks_like_correction(new_turns):
@@ -301,3 +305,15 @@ def detect_from_transcript(
             return []
         catalog.write(lesson)
         return [lesson]
+
+
+def _capture_knowledge(new_turns: list[str]) -> None:
+    """Fire the slice-2 knowledge CAPTURE pass over the new user turns. Provenance-gated
+    (same `new_turns` the correction pass uses) and entirely FAIL-OPEN: any error (no vault
+    configured, classifier hiccup, IO) is swallowed so capture never breaks DETECT."""
+    try:
+        from .knowledge import capture
+
+        capture.capture_from_turns(new_turns)
+    except Exception:
+        pass

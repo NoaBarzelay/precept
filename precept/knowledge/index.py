@@ -181,12 +181,16 @@ def build(vault: Path, db_path: Path) -> int:
     return n
 
 
-def search(db_path: Path, query: str, k: int = 10) -> list[dict[str, Any]]:
+def search(db_path: Path, query: str, k: int = 10, *, match_any: bool = False) -> list[dict[str, Any]]:
     """FTS5 BM25 search over (title, body). Returns up to `k` ranked rows (best first)
-    as dicts: path, title, folder, type, updated, snippet, score (-bm25; higher=better)."""
+    as dicts: path, title, folder, type, updated, snippet, score (-bm25; higher=better).
+
+    `match_any=False` (default) AND-s every query token (precise lookup — what the CLI/audit
+    use). `match_any=True` OR-s them (recall-biased — for routing a new file and retrieval
+    injection over a free-text prompt, where requiring every word would match nothing)."""
     if not Path(db_path).exists():
         return []
-    match = _fts_query(query)
+    match = _fts_query(query, match_any=match_any)
     if not match:
         return []
     conn = connect_db(Path(db_path))
@@ -211,11 +215,15 @@ def search(db_path: Path, query: str, k: int = 10) -> list[dict[str, Any]]:
     ]
 
 
-def _fts_query(query: str) -> str:
-    """Turn free text into a safe FTS5 MATCH expression: bare word tokens AND-ed
-    together (each quoted so FTS5 never parses user text as operators/syntax)."""
+def _fts_query(query: str, *, match_any: bool = False) -> str:
+    """Turn free text into a safe FTS5 MATCH expression: bare word tokens (each quoted so
+    FTS5 never parses user text as operators/syntax), joined by an implicit AND (default)
+    or an explicit OR (`match_any`, recall-biased for routing/retrieval over a sentence)."""
     terms = re.findall(r"\w+", query or "")
-    return " ".join(f'"{t}"' for t in terms)
+    if not terms:
+        return ""
+    quoted = [f'"{t}"' for t in terms]
+    return " OR ".join(quoted) if match_any else " ".join(quoted)
 
 
 def inbound_link_count(db_path: Path, stem: str) -> int:
@@ -230,3 +238,84 @@ def inbound_link_count(db_path: Path, stem: str) -> int:
     finally:
         conn.close()
     return int(row[0]) if row else 0
+
+
+# --- incremental upsert (capture / `precept note`) --------------------------
+# `build()` is the full rebuild (the derived-invariant test). For the per-turn
+# capture path we also need to fold ONE freshly-written file into the live index
+# without rebuilding the whole vault — same content-table pattern, on the live DB.
+def upsert_file(db_path: Path, vault: Path, path: Path) -> None:
+    """Index (or re-index) a single markdown file into the LIVE index DB, creating the
+    schema if the DB doesn't exist yet. Removes any prior row + link rows for the file
+    first so a re-capture stays idempotent. Derived/disposable; safe to drop and rebuild."""
+    vault = Path(vault)
+    db_path = Path(db_path)
+    conn = connect_db(db_path)
+    try:
+        _create_schema(conn)
+        rel = path.relative_to(vault).as_posix()
+        stem = path.stem
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM docs WHERE path = ?", (rel,))
+        conn.execute("DELETE FROM links WHERE src = ?", (stem,))
+        _index_file(conn, vault, path)
+        _rollup_entities(conn)
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+def folder_counts(db_path: Path) -> dict[str, int]:
+    """Per-folder doc counts from the entity rollup (used to weight folder routing —
+    a folder that already accumulates docs is a stronger candidate)."""
+    if not Path(db_path).exists():
+        return {}
+    conn = connect_db(Path(db_path))
+    try:
+        rows = conn.execute("SELECT folder, doc_count FROM entities").fetchall()
+    finally:
+        conn.close()
+    return {r[0]: int(r[1]) for r in rows}
+
+
+# Tiny English stopword set for ROUTING ONLY: routing must key on CONTENT words, not on
+# "is"/"the"/"a" (which would match almost any doc and mis-route a novel topic). Not used by
+# `search`, which keeps its FTS tokens verbatim. Deliberately small + auditable.
+_ROUTE_STOPWORDS = frozenset(
+    "a an and are as at be by for from has have in into is it its of on or "
+    "that the to was were will with this these those over under not but if".split()
+)
+
+
+def _content_terms(text: str) -> str:
+    """Drop stopwords and 1-2 char tokens so routing matches on meaningful words."""
+    terms = [t for t in re.findall(r"\w+", (text or "").lower())
+             if len(t) > 2 and t not in _ROUTE_STOPWORDS]
+    return " ".join(terms)
+
+
+def route_folder(db_path: Path, title: str, body: str, k: int = 8) -> tuple[str | None, float]:
+    """AUTO-ROUTE a new knowledge file to the best-matching EXISTING folder by content.
+
+    Matches the title+body CONTENT WORDS (stopwords stripped, so a novel topic isn't routed
+    on "is"/"the") against the index and tallies the folders of the top-k hits (BM25-weighted).
+    Returns (best_folder, confidence in [0,1]); (None, 0.0) when nothing meaningful matches —
+    the caller then treats it as a clearly-novel entity and proposes a NEW folder rather than
+    forcing a poor fit."""
+    query = _content_terms(f"{title} {body}")
+    if not query:
+        return None, 0.0
+    hits = search(db_path, query, k=k, match_any=True)
+    if not hits:
+        return None, 0.0
+    weights: dict[str, float] = {}
+    total = 0.0
+    for h in hits:
+        folder = h.get("folder") or ""
+        w = max(h.get("score", 0.0), 0.0) + 1e-6  # BM25 score (higher=better); keep >0
+        weights[folder] = weights.get(folder, 0.0) + w
+        total += w
+    if not weights or total <= 0:
+        return None, 0.0
+    best = max(weights, key=lambda f: weights[f])
+    return best, round(weights[best] / total, 4)
