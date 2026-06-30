@@ -88,6 +88,12 @@ def token_usage_log() -> Path:
     return state_dir() / "token_usage.jsonl"
 
 
+def inference_health() -> Path:
+    """Last inference failure per flow (inference.note_failure writes it; `precept doctor`
+    reports it) — makes a total auth/config failure visible. Derived/disposable/local."""
+    return state_dir() / "inference_health.json"
+
+
 def knowledge_audit_stamp() -> Path:
     """Timestamp of the last daily knowledge integrity audit (slice 2). A once-per-day
     THROTTLE reads/writes this so the audit can ride SessionStart without nagging.

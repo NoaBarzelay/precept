@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from . import meter
+from . import inference, meter
 
 JUDGE_MODEL = "claude-haiku-4-5"
 
@@ -49,7 +49,8 @@ def verdict(judgment_prompt: str, context: str, client: Any | None = None) -> Ve
         )
         meter.record(meter.JUDGE_VERDICT, JUDGE_MODEL, resp)
         return resp.parsed_output
-    except Exception:
+    except Exception as exc:
+        inference.note_failure(meter.JUDGE_VERDICT, exc)  # de-silence; still fail open
         return None  # fail open
 
 
@@ -129,7 +130,8 @@ def consolidated_verdict(
         )
         meter.record(meter.JUDGE_CONSOLIDATED, JUDGE_MODEL, resp)
         return {v.id: v for v in resp.parsed_output.verdicts}
-    except Exception:
+    except Exception as exc:
+        inference.note_failure(meter.JUDGE_CONSOLIDATED, exc)  # de-silence; still fail open
         return None  # fail open
 
 
@@ -168,5 +170,6 @@ def conflict_verdict(rule_a: str, rule_b: str, client: Any | None = None) -> Con
         )
         meter.record(meter.JUDGE_CONFLICT, JUDGE_MODEL, resp)
         return resp.parsed_output
-    except Exception:
+    except Exception as exc:
+        inference.note_failure(meter.JUDGE_CONFLICT, exc)  # de-silence; still fail open
         return None  # fail open

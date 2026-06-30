@@ -314,6 +314,31 @@ def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is 
                 "Anthropic: keep a memory file lean; prefer repo/language scope or retire stale conventions."
             )
 
+    # Inference health: are the LLM flows (DETECT/COMPILE/JUDGE) actually reachable? This
+    # is the check that would have caught the silent subscription-auth failure. The probe
+    # is FREE when no credentials resolve (client-side error before any call); ~1 token when
+    # healthy. NOT tied to --strict: inference-unreachable is expected on a pure subscription.
+    from . import inference as _inference
+
+    ok, detail = _inference.probe()
+    mark = "[green]ok[/green]" if ok else "[red]UNREACHABLE[/red]"
+    console.print("\n[bold]Inference[/bold] (LLM flows: detect / compile / judge):")
+    console.print(f"  {mark}  {detail}")
+    if not ok:
+        console.print(
+            "  [dim]The flows need a metered ANTHROPIC_API_KEY (or auth_token). The Claude Code "
+            "subscription exposes no credential to a subprocess, so the self-improving loop is "
+            "inert without one. Deterministic enforcement of already-compiled policies still works.[/dim]"
+        )
+    else:
+        console.print("  [dim](a healthy probe spends ~1 token)[/dim]")
+    fails = _inference.last_failures()
+    if fails:
+        console.print("  recorded flow failures (last seen):")
+        for flow, info in sorted(fails.items()):
+            tag = "[red]auth/config[/red]" if info.get("auth_error") else "[yellow]transient[/yellow]"
+            console.print(f"    {flow:20} {tag}  [dim]{info.get('error_type')}: {str(info.get('message'))[:80]}[/dim]")
+
 
 @app.command()
 def govern(
