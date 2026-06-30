@@ -5,6 +5,9 @@ current review pass. Newest items go under "Open"; move to "Done" when shipped.
 
 ## Open
 
+> **Items 1, 2, 3, 6 — DONE (2026-06-30).** Built as a background pipeline; see the "Done"
+> section at the bottom for the shipped summary. Entries kept here for the original spec.
+
 ### 1. Incremental, on-the-fly detection (cursor + pre-filter)
 **Why.** Detection already runs on every Stop (per turn, so it is responsive even in a
 days-long session). But each Stop spawns a fresh `detect` that re-reads the transcript
@@ -161,6 +164,30 @@ erases; `hookSpecificOutput.additionalContext` injects) against code.claude.com/
   today the gate targets Edit (the dominant code-mutation tool).
 
 ## Done
+- **Backlog items 1, 2, 3, 6 — 2026-06-30.** Built by a background pipeline.
+  - **#1 Incremental detection.** Per-session CURSOR (`paths.detect_cursor`) records the
+    transcript offset already classified; each Stop classifies only the new tail and
+    advances it (resets if the transcript shrinks). A recall-biased regex PRE-FILTER
+    (`detect.looks_like_correction`) is a pure COST GATE — it only decides whether to spend
+    the LLM call; the correction classification stays the LLM. A per-session LOCK
+    (`detect._DetectLock`, an atomic `os.mkdir`, stale-reclaimed) makes detection idempotent
+    under near-simultaneous Stops. `hooks._spawn_detect` threads `session_id` + `cwd` through.
+  - **#2 Robust hook paths + doctor.** `install.resolve_command` writes the ABSOLUTE path to
+    each console script into settings.json (venv-not-on-PATH safe); entry detection is now
+    basename-keyed so the strip stays an exact inverse. New `precept/doctor.py` verifies each
+    hook is registered AND reachable AND wired to the right script; surfaced by `precept doctor`
+    (with `--strict` for CI).
+  - **#3 Proactive review.** Detected lessons carry `needs_review`; `precept/review.py` builds
+    an additionalContext prompt ("I drafted a rule … keep it?") injected on the Stop allow-path
+    and by a new SessionStart hook (`precept-hook-sessionstart`, with pyproject + install entry).
+    The PENDING gate is untouched — this changes HOW the user is asked, not WHETHER they approve;
+    `keep`/`delete` clear the flag.
+  - **#6 Governance.** `precept/governance.py`: decay (active rule, fire_count 0 past a
+    threshold -> propose archive), supersede (old -> ARCHIVED with `superseded_by`, new gets
+    `supersedes`), conflict-detection via the SAME injectable judge seam (`judge.conflict_verdict`,
+    fail-open). Surfaced by `precept govern`; archived rules are excluded from the compile cache
+    (already gated on status=ACTIVE), so they stop enforcing on recompile. Nothing auto-applied.
+  - 26 new tests (125 total green); evals 100%/0%; ruff clean on all new code.
 - **Stop-verdict layer (#4 + #5 core), 2026-06-29.** AI-based claim detection (regex
   retired), judgment relevance-gate plumbing, and ONE consolidated verdict call per turn
   at Stop, with the `verdict_fn` injection seam keeping the Tier-1 eval deterministic.

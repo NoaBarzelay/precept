@@ -127,3 +127,41 @@ def consolidated_verdict(
         return {v.id: v for v in resp.parsed_output.verdicts}
     except Exception:
         return None  # fail open
+
+
+# ---------------------------------------------------------------------------
+# Conflict detection (item 6): does a PAIR of rules contradict? This is the same
+# LLM-judge seam — injectable so governance stays deterministic + fail-open in tests.
+# ---------------------------------------------------------------------------
+CONFLICT_SYSTEM = """You decide whether TWO rules a user set for their coding agent \
+CONTRADICT — i.e. obeying one necessarily violates the other (e.g. "always use npm" vs \
+"never use npm, use pnpm"). Two rules that merely cover different topics, or that can both \
+be satisfied at once, do NOT conflict. Bias toward conflicts=false: only flag a CLEAR, \
+direct contradiction. If they conflict, name the field/behavior they disagree on. \
+Reason first."""
+
+
+class ConflictVerdict(BaseModel):
+    reasoning: str = Field(description="brief: can both rules be obeyed at once?")
+    conflicts: bool
+    reason: str = ""
+
+
+def conflict_verdict(rule_a: str, rule_b: str, client: Any | None = None) -> ConflictVerdict | None:
+    """Ask whether two rule descriptions contradict. None on any failure (caller treats
+    None as 'no conflict' — fail-open: never propose retiring a rule on a model hiccup)."""
+    try:
+        if client is None:
+            import anthropic
+
+            client = anthropic.Anthropic()
+        resp = client.messages.parse(
+            model=JUDGE_MODEL,
+            max_tokens=512,
+            system=CONFLICT_SYSTEM,
+            messages=[{"role": "user", "content": f"RULE A:\n{rule_a}\n\nRULE B:\n{rule_b}"}],
+            output_format=ConflictVerdict,
+        )
+        return resp.parsed_output
+    except Exception:
+        return None  # fail open
