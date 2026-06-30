@@ -25,13 +25,13 @@ def isolated(tmp_path, monkeypatch):
 
 def _conv(
     lid: str, do: str, *, scope=Scope.GLOBAL, scope_value=None,
-    origin=Origin.CORRECTION, status=Status.ACTIVE,
+    origin=Origin.CORRECTION, status=Status.ACTIVE, retrieval_only=False, trigger="t",
 ) -> Lesson:
     le = Lesson(
         id=lid, created=date(2026, 6, 30), origin=origin, source_session="s",
         artifact_type=ArtifactType.CONVENTION, determinism=Determinism.STYLISTIC,
-        scope=scope, scope_value=scope_value,
-        trigger="t", what_was_wrong="w", what_to_do_instead=do,
+        scope=scope, scope_value=scope_value, retrieval_only=retrieval_only,
+        trigger=trigger, what_was_wrong="w", what_to_do_instead=do,
     )
     le.status = status
     return le
@@ -75,6 +75,8 @@ def test_is_managed_excludes_bootstrap_pending_and_nonconvention(isolated):
         judgment_prompt="is it satisfied?",
     )]
     assert convention.is_managed(enforced) is False
+    # retrieval_only conventions live in the injection path, not the always-on file
+    assert convention.is_managed(_conv("ro", "x", retrieval_only=True)) is False
 
 
 # --- rendering -------------------------------------------------------------
@@ -131,6 +133,50 @@ def test_recompile_without_lesson_removes_managed_file_only(isolated):
     convention.write_managed_rules([])  # lesson archived/deleted -> recompile empties it
     assert not (isolated / "rules" / "precept-conventions.md").exists()  # ours gone
     assert user_rule.exists()  # the user's survives
+
+
+# --- activity-keyed retrieval (P1) -----------------------------------------
+def test_retrieval_only_is_not_written_to_the_always_on_file(isolated):
+    # A retrieval_only convention must NOT land in the always-on rules file.
+    convention.write_managed_rules([_conv("ro", "use structured logging", retrieval_only=True)])
+    assert convention.managed_files() == []
+    assert not (isolated / "rules" / "precept-conventions.md").exists()
+
+
+def test_relevant_filters_by_flag_scope_and_keyword():
+    lessons = [
+        _conv("logging", "use structured logging", retrieval_only=True, trigger="logging output"),
+        _conv("always_on", "use structured logging", retrieval_only=False, trigger="logging output"),
+        _conv("offtopic", "validate webhook signatures", retrieval_only=True, trigger="webhook handling"),
+    ]
+    hits = convention.relevant(lessons, "please fix the logging in this module")
+    ids = [le.id for le in hits]
+    assert ids == ["logging"]  # retrieval_only + keyword match; always_on and offtopic excluded
+
+
+def test_relevant_repo_scope_is_cwd_gated(tmp_path):
+    root = str(tmp_path / "proj")
+    le = _conv("r", "run make lint", scope=Scope.REPO, scope_value=root,
+               retrieval_only=True, trigger="lint step")
+    assert convention.relevant([le], "remember the lint step", cwd=root) == [le]
+    assert convention.relevant([le], "remember the lint step", cwd="/elsewhere") == []
+
+
+def test_retrieval_context_and_userpromptsubmit_injection(tmp_path, monkeypatch):
+    # End to end: a retrieval_only card in the catalog is injected at UserPromptSubmit when
+    # the prompt matches, and nothing is injected when it doesn't. Isolate PRECEPT_HOME (the
+    # catalog) and PRECEPT_STATE_DIR (so knowledge retrieval finds no real index).
+    monkeypatch.setenv("PRECEPT_HOME", str(tmp_path / "precept"))
+    monkeypatch.setenv("PRECEPT_STATE_DIR", str(tmp_path / "state"))
+    from precept import catalog, enforce
+
+    catalog.write(_conv("logging", "use structured logging", retrieval_only=True,
+                        trigger="logging output"))
+
+    out = enforce.evaluate_userpromptsubmit({"prompt": "improve the logging here", "cwd": ""}, [])
+    assert "use structured logging" in out["hookSpecificOutput"]["additionalContext"]
+
+    assert enforce.evaluate_userpromptsubmit({"prompt": "rename a variable", "cwd": ""}, []) == {}
 
 
 def test_oversize_files_flags_large_file(isolated):

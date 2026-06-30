@@ -292,6 +292,13 @@ class Lesson(BaseModel):
     # has not yet been asked. Cleared once kept/vetoed.
     needs_review: bool = False
 
+    # Convention retrieval (P1): a CONVENTION can be delivered two ways. Default (False) =
+    # always-on, written into the Precept-owned .claude/rules file. True = retrieval-only:
+    # kept OUT of the always-on file and instead injected at UserPromptSubmit ONLY when the
+    # working context matches (scope + prompt keywords), the just-in-time / Letta long-tail
+    # path. Mutually exclusive with the always-on file, so a convention is never double-served.
+    retrieval_only: bool = False
+
     # Governance (item 6): when this rule SUPERSEDES an older one, the older lesson's id.
     # The superseded lesson is moved to ARCHIVED with a back-pointer; nothing is hard-deleted.
     supersedes: str | None = None

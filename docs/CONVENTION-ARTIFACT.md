@@ -157,15 +157,27 @@ never leave the machine). Secondary, not default.
 
 - **P0 (shipped).** Owned `.claude/rules/` files; GLOBAL/REPO/LANGUAGE scope; `paths:`
   path-scoping; manifest cleanup; atomic writes; bootstrap boundary; rename to CONVENTION.
-- **P1 — lean core + structural relevance.** (a) Apply the `and not lesson.policies` guard.
-  (b) Keep the always-on file small: bias new conventions to REPO/LANGUAGE scope, surface a
-  size warning, let governance decay stale ones. (c) Add **activity-keyed retrieval**: at
-  `UserPromptSubmit`/`PreToolUse`, inject only the conventions whose structural conditions
-  (path/tool/domain) match the current task, reusing the knowledge-pillar retrieval seam.
-  Always-on stays only for the few universal musts.
+- **P1 (shipped).** (a) `is_managed` excludes a convention that also compiled to a HARD
+  policy (no double-implementation). (b) Leanness guardrail: `oversize_files` + a `precept
+  doctor` warning past `MAX_RECOMMENDED_LINES`. (c) **Activity-keyed retrieval.** A
+  `Lesson.retrieval_only` flag (default False) moves a convention OFF the always-on file and
+  into a just-in-time path: `convention.relevant(prompt, cwd)` returns the retrieval_only
+  conventions whose scope matches cwd AND whose keywords overlap the prompt (structural token
+  match, not semantic); `convention.retrieval_context` formats them; `enforce.evaluate_
+  userpromptsubmit` injects them as `additionalContext` alongside knowledge retrieval (lazy,
+  fail-open). Always-on and retrieval_only are mutually exclusive, so a convention is never
+  double-served. Native `paths:` scoping already covers FILE-keyed relevance, so this targets
+  PROMPT/TASK-keyed conventions that path globs can't reach.
+  - *Deferred within P1:* AUTO-routing — deciding WHICH conventions become `retrieval_only`
+    (vs always-on core) is still manual / a future router job. The flag + mechanism ship now;
+    nothing is auto-flagged, so default behavior is unchanged.
 - **P2 — fuzzy-subset vector layer (eval-gated).** A LOCAL vector index over fuzzy
   conventions, keyed on the working context (current file/diff), behind a Recall@k eval that
-  proves keyword/structural retrieval misses. Off by default.
+  proves keyword retrieval misses. Off by default. (Keyword retrieval has poor recall on
+  fuzzy conventions like "prefer composition" whose trigger words rarely appear in the
+  prompt — exactly the subset vectors would help, and the reason auto-routing must keep
+  fuzzy/triggerless conventions in the always-on core rather than retrieval_only.)
 
-The end-state is Letta-shaped: a tiny always-in-context core of universal rules, the long
-tail injected just-in-time by relevance, vectors only where measured to help.
+The end-state is Letta-shaped: a tiny always-in-context core of universal/fuzzy rules, the
+keyword-triggerable long tail injected just-in-time by relevance, vectors only where measured
+to help.

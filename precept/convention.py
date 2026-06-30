@@ -32,9 +32,11 @@ skipped, exactly as Precept never re-adopts the user's pre-existing permission e
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 
-from . import paths
+from . import catalog, paths
 from .models import ArtifactType, Lesson, Origin, Scope, Status
 from .safety import atomic_write_text
 
@@ -80,12 +82,15 @@ def is_managed(lesson: Lesson) -> bool:
       - a lesson that ALSO compiled to a HARD policy. If the classifier tagged a
         convention `judgment` and `keep` synthesized a Stop verdict gate, it is already
         enforced; writing it ALSO as a soft rules line would double-implement the same
-        learning (a hard gate + a soft reminder). The hard policy wins; we stay quiet."""
+        learning (a hard gate + a soft reminder). The hard policy wins; we stay quiet;
+      - a `retrieval_only` convention (P1) — it is injected just-in-time by relevance
+        instead of living in the always-on file (see `relevant` / `retrieval_context`)."""
     return (
         lesson.artifact_type == ArtifactType.CONVENTION
         and lesson.status == Status.ACTIVE
         and lesson.origin != Origin.BOOTSTRAP
         and not lesson.policies
+        and not lesson.retrieval_only
     )
 
 
@@ -214,6 +219,81 @@ def strip_all() -> list[Path]:
 def managed_files() -> list[Path]:
     """The currently-managed convention files (per the manifest), for `precept doctor`."""
     return [Path(f) for f in _load_manifest()]
+
+
+# ---------------------------------------------------------------------------
+# Activity-keyed retrieval (P1): a `retrieval_only` convention is NOT in the
+# always-on file; it is injected at UserPromptSubmit ONLY when the working context
+# matches — scope (cwd) AND a keyword overlap with the prompt. This is the Letta
+# long-tail / just-in-time path. Relevance is STRUCTURAL/keyword (token overlap), not
+# semantic — cheap, deterministic, auditable; a local vector layer is deferred to P2.
+# Native `paths:` scoping already covers FILE-keyed relevance, so this targets the
+# PROMPT/TASK-keyed conventions that path globs can't reach.
+# ---------------------------------------------------------------------------
+_MAX_RETRIEVED = 5
+_MIN_KEYWORD_LEN = 4
+# Generic instruction/filler words that would over-match; domain nouns are kept.
+_STOPWORDS = frozenset({
+    "always", "never", "prefer", "instead", "should", "using", "with", "from",
+    "this", "that", "your", "when", "then", "than", "into", "only", "also", "must",
+    "dont", "make", "want", "need", "like", "does", "done", "have", "will", "they",
+})
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        w for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+        if len(w) >= _MIN_KEYWORD_LEN and w not in _STOPWORDS
+    }
+
+
+def _scope_matches(lesson: Lesson, cwd: str) -> bool:
+    """Mirror enforce._in_scope for a Lesson: GLOBAL/LANGUAGE fire anywhere; REPO fires
+    only when cwd is at/under the stored root (a repo rule with no usable cwd is skipped,
+    narrower never wider)."""
+    if lesson.scope == Scope.REPO:
+        if not lesson.scope_value or not cwd:
+            return False
+        try:
+            c = os.path.realpath(cwd)
+            r = os.path.realpath(lesson.scope_value)
+        except OSError:
+            return False
+        return c == r or c.startswith(r + os.sep)
+    return True
+
+
+def relevant(lessons: list[Lesson], prompt: str, cwd: str = "") -> list[Lesson]:
+    """The retrieval_only conventions whose scope matches cwd AND whose keywords overlap
+    the prompt. Sorted by id, capped. Pure (no IO) so it's trivially testable."""
+    prompt_tokens = _tokens(prompt)
+    if not prompt_tokens:
+        return []
+    hits = [
+        le for le in lessons
+        if le.artifact_type == ArtifactType.CONVENTION
+        and le.status == Status.ACTIVE
+        and le.retrieval_only
+        and _scope_matches(le, cwd)
+        and (_tokens(f"{le.trigger} {le.what_to_do_instead}") & prompt_tokens)
+    ]
+    hits.sort(key=lambda le: le.id)
+    return hits[:_MAX_RETRIEVED]
+
+
+def retrieval_context(prompt: str, cwd: str = "") -> str | None:
+    """additionalContext for the retrieval_only conventions relevant to this prompt, or
+    None when there are none. Loads the catalog (the source of truth); FAIL-OPEN — any
+    error yields None so the UserPromptSubmit hook never wedges on a read."""
+    try:
+        hits = relevant(catalog.load_all(), prompt, cwd)
+    except Exception:
+        return None
+    if not hits:
+        return None
+    lines = ["Relevant conventions (Precept, soft — apply if appropriate):"]
+    lines += [f"  - {le.what_to_do_instead.strip()}" for le in hits]
+    return "\n".join(lines)
 
 
 def oversize_files(threshold: int = MAX_RECOMMENDED_LINES) -> list[tuple[Path, int]]:
