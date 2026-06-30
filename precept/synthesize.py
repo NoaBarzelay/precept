@@ -219,9 +219,9 @@ def synthesize_policy(lesson: Lesson, client: Any | None = None) -> Policy | Non
     )
     try:
         if client is None:
-            import anthropic
+            from . import inference
 
-            client = anthropic.Anthropic()
+            client = inference.get_client()
         resp = client.messages.parse(
             model=SYNTH_MODEL,
             max_tokens=1024,
