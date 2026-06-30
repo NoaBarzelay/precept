@@ -197,9 +197,9 @@ def classify(context: str, client: _ParseClient | None = None) -> MaybeLesson:
     """One schema-constrained classifier call. FAILS CLOSED (abstains) on any error."""
     try:
         if client is None:
-            import anthropic
+            from . import inference
 
-            client = anthropic.Anthropic()
+            client = inference.get_client()
         resp = client.messages.parse(
             model=CLASSIFIER_MODEL,
             max_tokens=1024,
