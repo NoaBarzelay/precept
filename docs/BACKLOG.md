@@ -138,6 +138,31 @@ docs/DETERMINISM-MAP.md) that becomes the reference the multi-way router is buil
 **Note.** #4 (pre-filter must stay a cost gate, semantic decision stays AI) and #5 are
 specific instances of this question; this item is the systematic version.
 
+### 10. Subscription inference — the flows don't run on a pure subscription (Noa, 2026-06-30) ⚠️ BLOCKER
+**Finding (proven, not theoretical).** Precept's LLM flows (DETECT/COMPILE/the 3 JUDGE
+verdicts) call `anthropic.Anthropic().messages.parse(...)`. On Noa's setup (Claude Code
+**subscription**, no API key) that raises `Could not resolve authentication method` — and
+the fail-closed/fail-open wrappers swallowed it silently, so the self-improving loop +
+judgment gates have been INERT (only deterministic enforcement of already-compiled
+policies runs). `precept doctor` now surfaces this (option C, shipped on feat/token-eval).
+**Why the obvious fix (option A: `claude -p` adapter) is NOT viable here.** Verified:
+the subscription exposes NO credential to a subprocess — `claude -p` returns "Not logged
+in" headless (even in a clean env, even with the host-refresh markers set); the on-disk
+OAuth token is expired and not subprocess-refreshable (host refreshes in memory/keychain;
+the plaintext `~/.claude/.credentials.json` was rotated away mid-investigation); the
+`claude-agent-sdk` isn't installed; `PRECEPT_INFERENCE=cli` (set in settings.json) is read
+by no code. A `claude -p` shim would be a permanent "Not logged in" — not built.
+**Realistic resolutions (Noa to pick):**
+- (a) **Metered API key for the background loop only.** Simplest + actually works.
+  Interactive enforcement stays subscription-powered (stdlib, no LLM); only the learning
+  flows draw on a key. The token eval sizes it: DETECT ~1k tok/call Haiku, COMPILE ~1.6k
+  Sonnet, JUDGE 0.2–0.4k Haiku — pennies/session. Recommended.
+- (b) **Host-blessed child-launch / Agent SDK channel.** Investigate whether a child
+  launched *by* Claude Code inherits host auth refresh (`CLAUDE_CODE_SDK_HAS_HOST_AUTH_
+  REFRESH=1`). Uncertain, deep, possibly Anthropic-internal.
+- (c) **OAuth token → SDK directly** (`auth_token` + `oauth-2025-04-20` beta). ToS/scope
+  gray area + refresh-rotation risk. Not recommended.
+
 ### 9. Token-eval follow-ups (Noa, 2026-06-30)
 From building the token-consumption eval (branch `feat/token-eval`):
 - **Subscription-native view.** The eval frames tokens as the unit and $ as notional (correct
