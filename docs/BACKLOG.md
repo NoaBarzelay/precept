@@ -95,9 +95,13 @@ turn, only when something relevant happened.
 > **#4 + #5 share one mechanism:** a single consolidated Stop AI verdict call that handles
 > both "is the agent claiming success" (trajectory) and "are the standards met" (judgment).
 
-### 7. Knowledge pillar (slice 2 + ops)
-Slice 1 (index + FTS5 search + convention suggester + integrity auditor/renamer) is the
-first background build. Remaining:
+### 7. Knowledge pillar (slice 2 + ops) — DONE (2026-06-30)
+Slice 1 (index + FTS5 search + convention suggester + integrity auditor/renamer) was the
+first background build. Slice 2 (capture + retire-notes-silo + retrieval-injection + daily
+audit/throttle + ANN-watch seam) shipped 2026-06-30 — see the "Done" section at the bottom.
+Original spec retained below.
+
+Remaining at the time:
 - **Capture** rides the per-turn detect pass (auto-write + auto-route to the right folder +
   confirm); retire any `~/.precept/notes` silo. Entities = folders, relationships = wikilinks.
 - **Retrieval injection** at SessionStart + UserPromptSubmit (BM25 first; local embeddings +
@@ -178,6 +182,30 @@ erases; `hookSpecificOutput.additionalContext` injects) against code.claude.com/
   today the gate targets Edit (the dominant code-mutation tool).
 
 ## Done
+- **Item 7 — Knowledge pillar slice 2, 2026-06-30.** Built by a background pipeline.
+  - **Capture.** `knowledge/capture.py` rides the per-turn DETECT pass (off Stop) over the
+    SAME provenance-filtered user turns. A recall-biased regex pre-filter (cost gate) gates a
+    schema-constrained `MaybeKnowledge` LLM call (fail-CLOSED/abstain). Durable knowledge is
+    written as a well-formed `type: knowledge` vault file (frontmatter `updated:` + `##
+    Sources`), AUTO-ROUTED to the best existing folder via `index.route_folder` (content-word
+    BM25 OR-match; a clearly-novel topic lands in a new `Notes/` folder instead of a forced
+    fit), and marked PENDING (`precept_status: pending`) — surfaced for confirmation, never
+    silently final. Entirely fail-OPEN (no vault / any error -> no-op).
+  - **Retire the notes silo.** `knowledge.add/search/reindex` (the `precept note/recall/
+    reindex` CLI) now read/write the SAME vault-backed knowledge index — ONE knowledge store.
+    `~/.precept/notes` is gone; `knowledge/store.py` is the shared filer (render + route +
+    incremental `index.upsert_file`). `test_knowledge.py` updated to the vault fixture.
+  - **Retrieval injection.** `knowledge/retrieval.py` does bounded (small-k, truncated,
+    capped) BM25 OR-match retrieval, wired into `enforce.evaluate_userpromptsubmit` (injects
+    additionalContext on the non-blocking path) and extended into the SessionStart hook
+    (query = last user turn). Local only — vault content never leaves the machine.
+  - **Daily integrity audit.** `knowledge/ops.py` + `precept audit`: re-runs the auditor and
+    an unfiled-knowledge scan, surfacing rename / placement / missing-frontmatter /
+    missing-sources / unfiled findings as PENDING proposals (never auto-applied; renamer stays
+    dry-run). A once-per-day THROTTLE (stamp in state_dir) lets it ride SessionStart without
+    nagging. Guarded ANN-WATCH seam: emits an HNSW suggestion when a future `vectors` table
+    exceeds ~1M rows; a clean no-op today (vectors not built).
+  - 20 new tests (154 total green); ruff clean on `precept/`.
 - **Backlog items 1, 2, 3, 6 — 2026-06-30.** Built by a background pipeline.
   - **#1 Incremental detection.** Per-session CURSOR (`paths.detect_cursor`) records the
     transcript offset already classified; each Stop classifies only the new tail and

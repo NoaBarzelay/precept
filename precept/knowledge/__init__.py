@@ -1,59 +1,107 @@
-"""KNOWLEDGE notes: capture and recall ("what do I know about X").
+"""KNOWLEDGE: capture and recall ("what do I know about X").
 
-Storage follows the local-first split:
-  - Markdown notes are the SOURCE OF TRUTH (in the catalog dir, safe to sync).
-  - A SQLite FTS5 index (on a LOCAL disk, outside any synced folder) makes recall
-    fast. The index is DERIVED and disposable — `reindex()` rebuilds it from the
-    markdown at any time (and is the executable test of that invariant).
+ONE knowledge store (slice 2). The old `~/.precept/notes` silo is RETIRED: `note` /
+`recall` / `reindex` now read and write the SAME vault-backed knowledge index that the
+rest of the pillar (index/audit/retrieval) uses, so there is a single source of truth.
 
-Keyword-first by deliberate decision: FTS5/BM25 + metadata (tag) filtering handles
-a personal note set well; semantic/vector recall (sqlite-vec) is added ONLY if a
-Recall@k eval shows keyword search missing things — not "embeddings from day one".
+  - Markdown knowledge files in the (private, configurable) vault are the SOURCE OF TRUTH.
+  - A SQLite FTS5 index on LOCAL disk (outside the synced vault) makes recall fast. It is
+    DERIVED and disposable — `reindex()` rebuilds it from the vault markdown at any time
+    (and is the executable test of that invariant).
+
+`add()` files a well-formed knowledge file into the vault (auto-routed to the best folder)
+and folds it into the live index; `search()` is vault-index BM25 recall returning Note-shaped
+rows for back-compat; `reindex()` is the full rebuild. The vault is resolved at runtime
+(PRECEPT_VAULT) — never bundled.
+
+Keyword-first by deliberate decision: FTS5/BM25 + tag filtering handles a personal vault
+well; semantic/vector recall (sqlite-vec) is added ONLY if a Recall@k eval shows keyword
+search missing things — not "embeddings from day one".
 """
 
 from __future__ import annotations
 
 import re
-import sqlite3
 from datetime import date as _date
 from pathlib import Path
 
-import yaml
-
-from .. import paths
 from ..models import Note
-from ..safety import atomic_write_text, connect_db
+from . import config as kconfig
+from . import frontmatter
+from . import index as kindex
+from . import store
 
-_FM = "---"
+# Re-export the entity-routing knobs so callers (and tests) can reach them via the pillar.
+file_knowledge = store.file_knowledge
 
 
-def _slug(text: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return "-".join(s.split("-")[:8]) or "note"
+def _vault_db() -> tuple[Path, Path]:
+    return kconfig.resolve_vault(), kconfig.knowledge_index_db()
 
 
 def note_path(note_id: str) -> Path:
-    return paths.notes_dir() / f"{note_id}.md"
+    """The vault path of a note filed by `add` (the default Notes/ inbox). `note_id` is the
+    title slug; we resolve it back to the on-disk file by matching the stored stem."""
+    vault, _ = _vault_db()
+    folder = vault / store.DEFAULT_FOLDER
+    if folder.exists():
+        for p in folder.glob("*.md"):
+            if _slug(p.stem) == note_id:
+                return p
+    # Fall back to a vault-wide scan (a routed note may live elsewhere).
+    for p in kindex.iter_markdown(vault):
+        if _slug(p.stem) == note_id:
+            return p
+    return folder / f"{note_id}.md"
 
 
-def render(note: Note) -> str:
-    front = yaml.safe_dump(note.model_dump(mode="json", exclude={"body"}), sort_keys=False, allow_unicode=True).strip()
-    return f"{_FM}\n{front}\n{_FM}\n\n# {note.title}\n\n{note.body}\n"
+def _slug(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    return "-".join(s.split("-")[:8]) or "note"
 
 
 def parse(text: str) -> Note:
-    _, front, body = text.split(_FM, 2)
-    data = yaml.safe_load(front)
-    data["body"] = re.sub(r"^\s*#\s+.*\n", "", body.strip(), count=1).strip()
-    return Note.model_validate(data)
+    """Parse a vault knowledge file back into a Note (back-compat with the old notes API).
+    Tags come from a `tags: [..]` frontmatter line if present."""
+    meta, body = frontmatter.split(text)
+    title = frontmatter.title_of(body, fallback="note")
+    # strip the leading H1 + the trailing `## Sources` section for the recall body.
+    no_h1 = re.sub(r"^\s*#\s+.*\n", "", body.strip(), count=1)
+    no_sources = re.split(r"(?m)^\s*##\s+Sources\s*$", no_h1)[0].strip()
+    return Note(
+        id=_slug(title),
+        created=_parse_date(meta.get("updated")),
+        title=title,
+        body=no_sources,
+        tags=_parse_tags(meta.get("tags")),
+        source="",
+    )
+
+
+def _parse_date(raw: str | None) -> _date:
+    try:
+        return _date.fromisoformat(raw) if raw else _date.today()
+    except ValueError:
+        return _date.today()
+
+
+def _parse_tags(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [t.strip() for t in raw.strip("[]").split(",") if t.strip()]
 
 
 def load_all() -> list[Note]:
-    d = paths.notes_dir()
-    if not d.exists():
-        return []
+    """Every knowledge file in the vault, as Notes (back-compat)."""
+    vault, _ = _vault_db()
     out: list[Note] = []
-    for p in sorted(d.glob("*.md")):
+    for p in kindex.iter_markdown(vault):
+        try:
+            meta, _body = frontmatter.split(p.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if meta.get("type") != "knowledge":
+            continue
         try:
             out.append(parse(p.read_text(encoding="utf-8")))
         except Exception:
@@ -61,79 +109,51 @@ def load_all() -> list[Note]:
     return out
 
 
-# --- FTS5 index (derived) ---------------------------------------------------
-def _connect() -> sqlite3.Connection:
-    conn = connect_db(paths.index_db())
-    conn.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS notes "
-        "USING fts5(id UNINDEXED, title, body, tags, created UNINDEXED)"
-    )
-    return conn
-
-
-def _index(note: Note, conn: sqlite3.Connection) -> None:
-    conn.execute("DELETE FROM notes WHERE id = ?", (note.id,))
-    conn.execute(
-        "INSERT INTO notes(id, title, body, tags, created) VALUES (?, ?, ?, ?, ?)",
-        (note.id, note.title, note.body, " ".join(note.tags), note.created.isoformat()),
-    )
-
-
 def add(title: str, body: str, *, tags: list[str] | None = None, source: str = "",
         today: _date | None = None) -> Note:
-    """Write a note (markdown source of truth) and index it for recall."""
-    paths.ensure_dirs()
-    note = Note(id=_slug(title), created=today or _date.today(), title=title,
-                body=body, tags=tags or [], source=source)
-    atomic_write_text(note_path(note.id), render(note))
-    conn = _connect()
-    try:
-        _index(note, conn)
-    finally:
-        conn.close()
-    return note
+    """File a knowledge note into the vault (auto-routed) and index it for recall.
 
-
-def _build_match(query: str, tag: str | None) -> str:
-    terms = re.findall(r"\w+", query or "")
-    q = " ".join(terms)
-    if tag:
-        q = f"{q} tags:{tag}".strip()
-    return q
+    This is the migrated `precept note`: the markdown lands in the vault (one knowledge
+    store), not the retired `~/.precept/notes`. Returns a Note view of what was written."""
+    sources = [source] if source else None
+    store.file_knowledge(
+        title, body, tags=tags or None, sources=sources, today=today, pending=False,
+    )
+    return Note(
+        id=_slug(title), created=today or _date.today(), title=title,
+        body=body, tags=tags or [], source=source,
+    )
 
 
 def search(query: str, *, limit: int = 10, tag: str | None = None) -> list[Note]:
-    """Recall notes. Metadata (tag) filter applies first, then BM25 ranking."""
-    conn = _connect()
-    try:
-        if not (query or tag):
-            rows = conn.execute(
-                "SELECT id, title, body, tags, created FROM notes ORDER BY created DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT id, title, body, tags, created FROM notes WHERE notes MATCH ? "
-                "ORDER BY bm25(notes) LIMIT ?",
-                (_build_match(query, tag), limit),
-            ).fetchall()
-        return [
-            Note(id=r[0], title=r[1], body=r[2], tags=r[3].split() if r[3] else [],
-                 created=_date.fromisoformat(r[4]))
-            for r in rows
-        ]
-    finally:
-        conn.close()
+    """Recall knowledge by keyword (vault-index BM25), optionally filtered by tag.
+
+    Returns Note-shaped rows (back-compat). The empty query lists recent docs; a tag filter
+    is applied post-hoc over the parsed files (tags live in frontmatter, not the FTS table)."""
+    vault, db = _vault_db()
+    notes: list[Note]
+    if not query:
+        # Empty query: list knowledge docs, most-recently-updated first.
+        # Most-recent first; over-fetch when tag-filtering so the post-hoc filter still fills.
+        window = None if tag else limit
+        notes = sorted(load_all(), key=lambda n: n.created, reverse=True)[:window]
+    else:
+        hits = kindex.search(db, query, k=limit * 3 if tag else limit)
+        notes = []
+        for h in hits:
+            if h.get("type") != "knowledge":
+                continue
+            p = vault / h["path"]
+            try:
+                notes.append(parse(p.read_text(encoding="utf-8")))
+            except OSError:
+                continue
+    if tag:
+        notes = [n for n in notes if tag in n.tags]
+    return notes[:limit]
 
 
 def reindex() -> int:
-    """Rebuild the FTS index from the markdown notes (the source of truth)."""
-    conn = _connect()
-    try:
-        conn.execute("DELETE FROM notes")
-        notes = load_all()
-        for n in notes:
-            _index(n, conn)
-        return len(notes)
-    finally:
-        conn.close()
+    """Rebuild the FTS index from the vault knowledge markdown (the source of truth)."""
+    vault, db = _vault_db()
+    return kindex.build(vault, db)
