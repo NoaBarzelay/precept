@@ -95,6 +95,42 @@ def _in_scope(policy: dict[str, Any], cwd: str) -> bool:
     return True  # unknown scope -> fire (fail-open, never wedge)
 
 
+def load_context_rules(path: Path | None = None) -> list[dict[str, Any]]:
+    """Load the authored context rules (item A) as plain dicts. STDLIB only / FAIL-OPEN:
+    a missing or unreadable file injects nothing."""
+    p = path or paths.context_rules_path()
+    try:
+        data = json.loads(Path(p).read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _context_matches(rule: dict[str, Any], tool_name: str, tool_input: dict[str, Any]) -> bool:
+    """A context rule matches when the tool name is equal and (if a path_pattern is set) the
+    tool's file_path passes the pattern. No path_pattern => the tool name alone matches."""
+    if rule.get("tool") != tool_name:
+        return False
+    pattern = rule.get("path_pattern")
+    if not pattern:
+        return True
+    return _check(_get_field(tool_input, "file_path"), rule.get("path_op", "glob"), pattern)
+
+
+def _collect_context(
+    context_rules: list[dict[str, Any]] | None, tool_name: str, tool_input: dict[str, Any]
+) -> str | None:
+    """Concatenated text of every context rule that matches this call, or None. The order is
+    the rules' file order, so the injection is stable/auditable."""
+    rules = context_rules if context_rules is not None else load_context_rules()
+    texts = [
+        r["text"]
+        for r in rules
+        if r.get("text") and _context_matches(r, tool_name, tool_input)
+    ]
+    return "\n\n".join(texts) if texts else None
+
+
 def _matches(match: dict[str, Any] | None, tool_name: str, tool_input: dict[str, Any]) -> bool:
     if not match:
         return False
@@ -106,8 +142,17 @@ def _matches(match: dict[str, Any] | None, tool_name: str, tool_input: dict[str,
     return True  # empty conditions => matches any call to this tool
 
 
-def evaluate_pretooluse(event: dict[str, Any], policies: list[dict[str, Any]] | None = None) -> dict:
-    """Return the PreToolUse hook output (allow/deny/ask/rewrite) per the live contract."""
+def evaluate_pretooluse(
+    event: dict[str, Any],
+    policies: list[dict[str, Any]] | None = None,
+    context_rules: list[dict[str, Any]] | None = None,
+) -> dict:
+    """Return the PreToolUse hook output (allow/deny/ask/rewrite) per the live contract.
+
+    Context rules (item A) ride ON TOP of the allow decision: after the deny/ask/rewrite
+    resolution, only when the call is otherwise ALLOWED do we attach any matching context
+    rules' concatenated text as additionalContext. A deny/ask wins and blocks; a rewrite
+    keeps its own shape — context rules never change the verdict, they only add a reminder."""
     pols = policies if policies is not None else load_compiled()
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {}) or {}
@@ -120,23 +165,24 @@ def evaluate_pretooluse(event: dict[str, Any], policies: list[dict[str, Any]] | 
         and _in_scope(p, cwd)
         and _matches(p.get("match"), tool_name, tool_input)
     ]
-    if not hits:
-        return cc.pretooluse_allow()
+    if hits:
+        winner = max(hits, key=lambda p: _PRECEDENCE.get(p.get("decision", "allow"), 0))
+        decision = winner.get("decision", "allow")
+        reason = winner.get("message", "Blocked by a Precept rule.")
+        if decision == "deny":
+            return cc.pretooluse_deny(reason)
+        if decision == "ask":
+            return cc.pretooluse_ask(reason)
+        if decision == "rewrite" and winner.get("rewrite_to"):
+            # updatedInput REPLACES the tool's arguments wholesale (per the hook contract),
+            # so a partial rewrite_to must be MERGED over the original input or it would drop
+            # the sibling fields (e.g. a {new_string: ...} rewrite would erase file_path).
+            merged = {**tool_input, **winner["rewrite_to"]}
+            return cc.pretooluse_rewrite(merged, reason)
 
-    winner = max(hits, key=lambda p: _PRECEDENCE.get(p.get("decision", "allow"), 0))
-    decision = winner.get("decision", "allow")
-    reason = winner.get("message", "Blocked by a Precept rule.")
-    if decision == "deny":
-        return cc.pretooluse_deny(reason)
-    if decision == "ask":
-        return cc.pretooluse_ask(reason)
-    if decision == "rewrite" and winner.get("rewrite_to"):
-        # updatedInput REPLACES the tool's arguments wholesale (per the hook contract),
-        # so a partial rewrite_to must be MERGED over the original input or it would drop
-        # the sibling fields (e.g. a {new_string: ...} rewrite would erase file_path).
-        merged = {**tool_input, **winner["rewrite_to"]}
-        return cc.pretooluse_rewrite(merged, reason)
-    return cc.pretooluse_allow()
+    # Otherwise ALLOW -> attach any matching context-rule reminders (item A).
+    ctx = _collect_context(context_rules, tool_name, tool_input)
+    return cc.pretooluse_allow(additional_context=ctx)
 
 
 def _transcript_tool_calls(entries: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:

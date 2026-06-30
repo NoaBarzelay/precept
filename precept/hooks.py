@@ -13,8 +13,17 @@ from . import enforce
 
 
 def pretooluse_main() -> int:
+    event = cc.read_event()
+    # Telemetry (item B-1): append one event-log line. Its own try so a logging hiccup can
+    # never affect enforcement, and vice versa — both fail open.
     try:
-        cc.emit(enforce.evaluate_pretooluse(cc.read_event()))
+        from . import telemetry
+
+        telemetry.log_event(event)
+    except Exception:
+        pass  # fail open
+    try:
+        cc.emit(enforce.evaluate_pretooluse(event))  # also applies context rules (item A)
     except Exception:
         pass  # fail open
     return 0
@@ -48,6 +57,7 @@ def sessionstart_main() -> int:
                 _review_injection_text(),
                 _sessionstart_retrieval(event),
                 _sessionstart_audit(),
+                _sessionstart_health(),
             ) if p
         ]
         if parts:
@@ -136,6 +146,18 @@ def _sessionstart_audit() -> str | None:
         if len(props) > 8:
             lines.append(f"  …and {len(props) - 8} more (`precept audit --force`).")
         return "\n".join(lines)
+    except Exception:
+        return None
+
+
+def _sessionstart_health() -> str | None:
+    """System-health reminder (item B-3) at SessionStart, THROTTLED to once per calendar day.
+    Returns a staleness reminder for the CONFIGURED watched files, or None (nothing watched /
+    all fresh / already ran today / any error). FAIL-OPEN."""
+    try:
+        from . import health
+
+        return health.health_reminder()
     except Exception:
         return None
 

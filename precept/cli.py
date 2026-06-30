@@ -280,6 +280,80 @@ def audit(
     )
 
 
+# ---------------------------------------------------------------------------
+# `precept context ...` — non-blocking PreToolUse reminders (item A). A context
+# rule injects a reminder as additionalContext when a tool call matches; it never
+# blocks. The text is supplied by the user — Precept ships none.
+# ---------------------------------------------------------------------------
+context_app = typer.Typer(add_completion=False, help="Non-blocking reminders injected on a matching tool call.")
+app.add_typer(context_app, name="context")
+
+
+@context_app.command("add")
+def context_add(
+    text: str = typer.Argument(..., help="the reminder to inject (your text; Precept ships none)"),
+    tool: str = typer.Option(..., help="the tool to match, e.g. Edit, Write, Read, Bash"),
+    path: str = typer.Option(None, help="optional glob (or regex with --regex) over the file_path"),
+    regex: bool = typer.Option(False, help="treat --path as a regex instead of a glob"),
+    id: str = typer.Option(None, help="stable id (auto-generated if omitted)"),
+) -> None:
+    """Add a context rule. On a matching ALLOW it injects `text` as additionalContext."""
+    from . import context_rules as cr
+    from .models import ContextRule, MatchOp
+
+    rule = ContextRule(
+        id=id or cr.gen_id(), tool=tool, path_pattern=path,
+        path_op=MatchOp.REGEX if regex else MatchOp.GLOB, text=text,
+    )
+    cr.add(rule)
+    where = f" on {rule.path_op.value} '{path}'" if path else ""
+    console.print(f"[green]Added[/green] context rule {rule.id}: {tool}{where} -> injects a reminder.")
+
+
+@context_app.command("list")
+def context_list() -> None:
+    """List all context rules."""
+    from . import context_rules as cr
+
+    rules = cr.load()
+    if not rules:
+        console.print("[dim]No context rules. Add one: precept context add \"<reminder>\" --tool Edit --path '...'[/dim]")
+        return
+    t = Table("id", "tool", "match", "text")
+    for r in rules:
+        match = f"{r.path_op.value}:{r.path_pattern}" if r.path_pattern else "(any path)"
+        t.add_row(r.id, r.tool, match, r.text[:60])
+    console.print(t)
+
+
+@context_app.command("remove")
+def context_remove(rule_id: str) -> None:
+    """Remove a context rule by id."""
+    from . import context_rules as cr
+
+    if cr.remove(rule_id):
+        console.print(f"[yellow]Removed[/yellow] context rule {rule_id}.")
+    else:
+        console.print(f"[red]No context rule with id '{rule_id}'.[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def report(
+    days: int = typer.Option(7, help="window in days (default 7)"),
+    root: str = typer.Option(None, help="count Edit/Write under this root (CONFIGURABLE; no default)"),
+    memory_regex: str = typer.Option(None, help="regex marking 'memory' files to count edits to (CONFIGURABLE)"),
+    skill_regex: str = typer.Option(None, help="regex for skill SKILL.md Read paths (defaults to the CC convention)"),
+) -> None:
+    """Activity scorecard (item B-2): read the tool-call event log and print a markdown
+    summary for the last N days. Every root/pattern is a flag — Precept ships no literals."""
+    from . import telemetry
+
+    console.print(telemetry.build_report(
+        days=days, root=root, memory_regex=memory_regex, skill_regex=skill_regex
+    ))
+
+
 @app.command()
 def version() -> None:
     console.print(__version__)
