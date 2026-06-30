@@ -247,5 +247,90 @@ def uninstall() -> None:
     console.print(f"[yellow]Uninstalled[/yellow] Precept hooks from {p}.")
 
 
+# ---------------------------------------------------------------------------
+# `precept knowledge ...` — the vault knowledge pillar (index / search / audit).
+# Operates on a CONFIGURABLE vault (PRECEPT_VAULT or --vault); the derived index
+# lives on local disk, never in the vault.
+# ---------------------------------------------------------------------------
+knowledge_app = typer.Typer(add_completion=False, help="Knowledge pillar over your markdown vault.")
+app.add_typer(knowledge_app, name="knowledge")
+
+
+def _resolve_vault_or_exit(vault: str | None):
+    from .knowledge import config as kconfig
+
+    try:
+        return kconfig.resolve_vault(vault)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@knowledge_app.command("index")
+def knowledge_index(vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)")) -> None:
+    """(Re)build the knowledge index from the vault markdown (derived, local-only)."""
+    from .knowledge import config as kconfig, index as kindex
+
+    v = _resolve_vault_or_exit(vault)
+    db = kconfig.knowledge_index_db()
+    n = kindex.build(v, db)
+    console.print(f"Indexed {n} markdown docs from {v} -> {db}")
+
+
+@knowledge_app.command("search")
+def knowledge_search(
+    query: str,
+    vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)"),
+    k: int = typer.Option(10, help="max results"),
+) -> None:
+    """Search the knowledge index (FTS5 BM25)."""
+    from .knowledge import config as kconfig, index as kindex
+
+    _resolve_vault_or_exit(vault)
+    hits = kindex.search(kconfig.knowledge_index_db(), query, k=k)
+    if not hits:
+        console.print("[dim]No matches (build the index first: precept knowledge index).[/dim]")
+        return
+    t = Table("score", "title", "folder", "type", "path")
+    for h in hits:
+        t.add_row(f"{h['score']:.2f}", h["title"][:48], h["folder"][:28],
+                  h["type"] or "-", h["path"])
+    console.print(t)
+
+
+@knowledge_app.command("audit")
+def knowledge_audit(vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)")) -> None:
+    """Print the integrity/rename plan (DRY-RUN — never applies anything)."""
+    from .knowledge import audit as kaudit, conventions as kconv
+
+    v = _resolve_vault_or_exit(vault)
+    spec, stats = kconv.suggest_from_vault(v)
+    findings = kaudit.audit(v, spec)
+    if not findings:
+        console.print("[green]No findings.[/green] Vault is clean under the derived spec.")
+        return
+    renames = [f for f in findings if f.kind == kaudit.FindingKind.RENAME]
+    if renames:
+        t = Table("path", "reasons", "proposed", "inbound", "collision", "type")
+        for f in renames:
+            t.add_row(
+                f.path,
+                ",".join(r.value for r in f.reasons),
+                f.proposed_stem or "[TODO: AI translate]",
+                str(f.inbound_link_refs),
+                "yes" if f.collision else "",
+                f.doc_type or "-",
+            )
+        console.print(t)
+    for f in findings:
+        if f.kind != kaudit.FindingKind.RENAME:
+            console.print(f"[yellow]{f.kind.value}[/yellow]  {f.path}  [dim]{f.detail}[/dim]")
+    console.print(
+        f"\n[bold]{len(findings)} findings[/bold] "
+        f"(scanned {stats.total} docs, {stats.non_exempt} non-exempt). "
+        "[dim]Dry-run only — nothing was changed.[/dim]"
+    )
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

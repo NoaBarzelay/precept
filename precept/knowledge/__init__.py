@@ -20,9 +20,9 @@ from pathlib import Path
 
 import yaml
 
-from . import paths
-from .models import Note
-from .safety import atomic_write_text, connect_db
+from .. import paths
+from ..models import Note
+from ..safety import atomic_write_text, connect_db
 
 _FM = "---"
 

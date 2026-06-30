@@ -92,6 +92,20 @@ turn, only when something relevant happened.
 > **#4 + #5 share one mechanism:** a single consolidated Stop AI verdict call that handles
 > both "is the agent claiming success" (trajectory) and "are the standards met" (judgment).
 
+### 7. Knowledge pillar (slice 2 + ops)
+Slice 1 (index + FTS5 search + convention suggester + integrity auditor/renamer) is the
+first background build. Remaining:
+- **Capture** rides the per-turn detect pass (auto-write + auto-route to the right folder +
+  confirm); retire any `~/.precept/notes` silo. Entities = folders, relationships = wikilinks.
+- **Retrieval injection** at SessionStart + UserPromptSubmit (BM25 first; local embeddings +
+  sqlite-vec `vectors` table deferred, local model only so knowledge never leaves the machine).
+- **Daily integrity audit** (scheduled): re-runs the auditor, surfaces rename/placement/
+  missing-frontmatter/unfiled-knowledge proposals as PENDING (block/propose, never silent).
+  - **ANN watch (Noa 2026-06-30):** the daily audit also watches the `vectors` table size.
+    Nearest-neighbor is brute-force (fine to ~tens of thousands of vectors). When the count
+    crosses the threshold where brute-force scan gets slow (~1M), the audit SUGGESTS
+    implementing an ANN graph index (HNSW). Suggestion only, surfaced like any other finding.
+
 ### 6. Rule governance: decay / supersede / conflict-detection  (deferred, Noa 2026-06-29)
 Part of the self-improvement pillar; deferred but captured so it's not missed.
 - **decay:** archive rules that never fire (fire_count stays 0 past a threshold), proposed
