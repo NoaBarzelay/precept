@@ -82,6 +82,12 @@ def detect_lock(session_id: str) -> Path:
     return cursors_dir() / f"{_session_slug(session_id)}.lock"
 
 
+def token_usage_log() -> Path:
+    """Append-only JSONL meter of per-flow LLM token usage (meter.record writes it;
+    `precept tokens` aggregates it). Derived/disposable/local — never the synced vault."""
+    return state_dir() / "token_usage.jsonl"
+
+
 def knowledge_audit_stamp() -> Path:
     """Timestamp of the last daily knowledge integrity audit (slice 2). A once-per-day
     THROTTLE reads/writes this so the audit can ride SessionStart without nagging.

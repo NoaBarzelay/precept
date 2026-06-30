@@ -192,6 +192,78 @@ def evals(strict: bool = typer.Option(False, help="exit nonzero on any miss/fals
 
 
 @app.command()
+def tokens(
+    static: bool = typer.Option(False, "--static", help="show the fixed prompt-cost ledger (system+schema per flow) instead of the live meter"),
+    refresh_baseline: bool = typer.Option(False, "--refresh-baseline", help="recompute the authoritative static ledger and overwrite token_baseline.json"),
+    strict: bool = typer.Option(False, help="with --static: exit nonzero if any flow's fixed overhead drifted from the baseline (CI gate)"),
+    as_json: bool = typer.Option(False, "--json", help="emit machine-readable JSON"),
+) -> None:
+    """Token-consumption eval for Precept's LLM flows — review where the tokens go.
+
+    Default: aggregate the live meter (real per-flow usage from your sessions).
+    --static: the FIXED prompt cost (system + schema) per flow, the part Precept
+    controls, with drift vs the committed baseline."""
+    import json as _json
+
+    from .evals import tokens as tok
+
+    if refresh_baseline:
+        rows = tok.static_ledger()
+        counted = [r for r in rows if r["method"] == "count_tokens"]
+        if not counted:
+            console.print("[red]No API key reachable — cannot compute an authoritative baseline (count_tokens needs a key).[/red]")
+            raise typer.Exit(1)
+        tok.write_baseline(rows)
+        console.print(f"Wrote baseline for {len(counted)} flows -> {tok.BASELINE}")
+        return
+
+    if static:
+        rows = tok.static_ledger()
+        drifted = tok.drift(rows)
+        if as_json:
+            console.print(_json.dumps({"ledger": rows, "drift": drifted}, indent=2))
+            if strict and drifted:
+                raise typer.Exit(1)
+            return
+        method = "count_tokens (exact)" if all(r["method"] == "count_tokens" for r in rows) else "OFFLINE ESTIMATE (~chars/4 — no API key; run --refresh-baseline with a key for exact)"
+        t = Table("flow", "model", "fixed overhead (tok)", "$ / 1k calls")
+        for r in rows:
+            usd = "—" if r["usd_per_1k_calls"] is None else f"${r['usd_per_1k_calls']:.4f}"
+            t.add_row(r["flow"], r["model"], str(r["overhead_tokens"]), usd)
+        console.print(t)
+        console.print(f"\n[bold]Static prompt-cost ledger[/bold] — fixed system+schema cost per flow [dim]({method})[/dim]")
+        if drifted:
+            console.print("[red]Drift from baseline:[/red]")
+            for d in drifted:
+                console.print(f"  {d['flow']}: {d['baseline']} -> {d['current']} ([red]{d['delta_pct']:+}%[/red])")
+        elif tok.load_baseline():
+            console.print("[green]No drift from the committed baseline.[/green]")
+        else:
+            console.print("[dim]No baseline committed yet — run `precept tokens --refresh-baseline` (needs an API key).[/dim]")
+        if strict and drifted:
+            raise typer.Exit(1)
+        return
+
+    # Default: the live meter.
+    rows = tok.aggregate(tok.load_meter())
+    if as_json:
+        console.print(_json.dumps(rows, indent=2))
+        return
+    if not rows:
+        console.print(f"[dim]No usage recorded yet. The meter fills as flows run; it lives at {paths.token_usage_log()}.[/dim]")
+        console.print("[dim]See the fixed per-flow cost now with `precept tokens --static`.[/dim]")
+        return
+    t = Table("flow", "calls", "in tok", "out tok", "in p50/p95", "out p50/p95", "cost $")
+    grand = 0.0
+    for r in rows:
+        grand += r["cost_usd"]
+        t.add_row(r["flow"], str(r["calls"]), str(r["in_total"]), str(r["out_total"]),
+                  f"{r['in_p50']}/{r['in_p95']}", f"{r['out_p50']}/{r['out_p95']}", f"${r['cost_usd']:.4f}")
+    console.print(t)
+    console.print(f"\n[bold]Live token meter[/bold] — {sum(r['calls'] for r in rows)} calls, total [bold]${grand:.4f}[/bold] (sorted by spend)")
+
+
+@app.command()
 def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is unreachable (CI gate)")) -> None:
     """Print resolved paths + environment, check the iCloud-safety invariant, and verify
     each installed hook command actually resolves (item 2)."""
@@ -231,6 +303,11 @@ def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is 
         console.print(f"\n[bold]Conventions[/bold] ({len(conv)} managed .claude/rules file(s)):")
         for f in conv:
             console.print(f"  [green]ok[/green]  {f}  [dim]{'present' if f.exists() else 'MISSING (recompile)'}[/dim]")
+        for f, n in _convention.oversize_files():
+            console.print(
+                f"  [yellow]warn[/yellow]  {f} is {n} lines (> {_convention.MAX_RECOMMENDED_LINES}). "
+                "Anthropic: keep a memory file lean; prefer repo/language scope or retire stale conventions."
+            )
 
 
 @app.command()

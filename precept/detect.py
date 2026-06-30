@@ -20,7 +20,7 @@ import time
 from datetime import date as _date
 from typing import Any, Protocol
 
-from . import catalog, paths
+from . import catalog, meter, paths
 from .adapters import claude_code as cc
 from .models import (
     Determinism, ExtractedLesson, GroundedSignals, Lesson, MaybeLesson, Origin, Scope,
@@ -207,6 +207,7 @@ def classify(context: str, client: _ParseClient | None = None) -> MaybeLesson:
             messages=[{"role": "user", "content": context}],
             output_format=MaybeLesson,
         )
+        meter.record(meter.DETECT, CLASSIFIER_MODEL, resp)
         return resp.parsed_output
     except Exception as exc:  # network, parse, validation — never mint on failure
         return MaybeLesson(

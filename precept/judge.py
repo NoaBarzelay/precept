@@ -17,6 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from . import meter
+
 JUDGE_MODEL = "claude-haiku-4-5"
 
 SYSTEM = """You are a strict but fair gate enforcing ONE rule the user set for their \
@@ -45,6 +47,7 @@ def verdict(judgment_prompt: str, context: str, client: Any | None = None) -> Ve
             messages=[{"role": "user", "content": f"RULE: {judgment_prompt}\n\nAGENT FINAL STATE:\n{context}"}],
             output_format=Verdict,
         )
+        meter.record(meter.JUDGE_VERDICT, JUDGE_MODEL, resp)
         return resp.parsed_output
     except Exception:
         return None  # fail open
@@ -124,6 +127,7 @@ def consolidated_verdict(
             ],
             output_format=ConsolidatedVerdict,
         )
+        meter.record(meter.JUDGE_CONSOLIDATED, JUDGE_MODEL, resp)
         return {v.id: v for v in resp.parsed_output.verdicts}
     except Exception:
         return None  # fail open
@@ -162,6 +166,7 @@ def conflict_verdict(rule_a: str, rule_b: str, client: Any | None = None) -> Con
             messages=[{"role": "user", "content": f"RULE A:\n{rule_a}\n\nRULE B:\n{rule_b}"}],
             output_format=ConflictVerdict,
         )
+        meter.record(meter.JUDGE_CONFLICT, JUDGE_MODEL, resp)
         return resp.parsed_output
     except Exception:
         return None  # fail open
