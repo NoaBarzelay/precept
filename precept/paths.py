@@ -95,6 +95,13 @@ def managed_permissions_manifest() -> Path:
     return state_dir() / "managed_permissions.json"
 
 
+def managed_claude_md_manifest() -> Path:
+    """The set of `.claude/rules/*.md` convention files Precept last wrote (artifact #3).
+    Lets a re-sync / uninstall delete ONLY files Precept created, never the user's own
+    rules files. Local/derived/rebuildable."""
+    return state_dir() / "managed_claude_md.json"
+
+
 def claude_home() -> Path:
     """The user's real Claude Code config dir — a COMMIT target."""
     return _env_path("PRECEPT_CLAUDE_HOME", Path.home() / ".claude")

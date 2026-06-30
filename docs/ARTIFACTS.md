@@ -10,7 +10,7 @@ guarantee of compliance). Precept only claims enforcement for the HARD tier.
 |---|------|--------|------|--------------------|-------|
 | 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | ✅ |
 | 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | ✅ |
-| 3 | CLAUDE.md edit | process | SOFT | `~/.claude/CLAUDE.md` / `.claude/rules/*.md` | ⬜ |
+| 3 | CLAUDE.md edit | process | SOFT | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | ✅ |
 | 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | ⬜ |
 | 5 | Agent persona | process | HARD (tools) + SOFT (prompt) | `.claude/agents/<n>.md` | ⬜ |
 | 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | ⬜ |
@@ -72,22 +72,38 @@ owns it. SOFT (recalled/injected, never enforced). Keyword-first; sqlite-vec sem
 + an ANN/HNSW index are deferred (a guarded ANN-watch seam suggests HNSW past ~1M vectors)
 until a Recall@k eval demands them.
 
-## 3. CLAUDE.md edit  (SOFT, not built)
+## 3. CLAUDE.md edit  (SOFT, built)
 
 **What.** A standing directive or convention ("API handlers live in `src/api/`",
-"prefer composition over inheritance"). A soft process: always-on context.
+"prefer composition over inheritance"). A soft process: always-on context. The SOFT
+sibling of a Rule — same Lesson spine and keep/veto gate, but COMMIT writes TEXT into a
+file Claude Code reads instead of a gate into the hook cache.
 
 **When/how used.** Loaded at the start of every session as context. Best for
 conventions and preferences, never for hard rules (Claude Code: CLAUDE.md is "context,
 not enforced configuration, no guarantee of strict compliance").
 
-**Structure.** Precept lesson (`artifact_type=CLAUDE_MD`) -> a marker-delimited block
-appended to `~/.claude/CLAUDE.md` (user), `./CLAUDE.md` (project), or a path-scoped
-`.claude/rules/*.md` (loads only when matching files are touched). Marker delimiting
-lets Precept update or remove its own block atomically without disturbing yours.
+**Structure.** Precept lesson (`artifact_type=CLAUDE_MD`) -> a Precept-OWNED file under
+`.claude/rules/`. We do NOT splice into the user's hand-written CLAUDE.md: the Claude Code
+docs (verified 2026-06-30, code.claude.com/docs/en/memory) don't endorse third-party in-place
+edits and recommend a decoupled file surfaced via the native `.claude/rules/` directory.
+Scope picks the file: GLOBAL -> `~/.claude/rules/precept-conventions.md` (no frontmatter, loads
+always); REPO -> `<root>/.claude/rules/precept-conventions.md`; LANGUAGE -> `~/.claude/rules/
+precept-<marker>.md` with a `paths:` glob frontmatter so Claude Code lazy-loads it only when a
+file of that language is touched (real path-scoping — what the Rule pillar deferred). Because
+Precept owns the WHOLE file, idempotency is "regenerate it" and uninstall is "delete it"; no
+marker bookkeeping. A sidecar manifest (`state_dir/managed_claude_md.json`) records what we
+wrote so a recompile/uninstall removes only Precept's files, never the user's own rules.
 
-**Infra.** Atomic write into the real CLAUDE.md / `.claude/rules/`. SOFT (Claude Code
-delivers it as a user message after the system prompt).
+**Boundary.** Write-back is only for conventions Precept LEARNED. A CLAUDE_MD lesson with
+`origin=BOOTSTRAP` was imported FROM the user's CLAUDE.md, so re-emitting it would duplicate
+the directive in context — skipped, mirroring how Precept never re-adopts the user's existing
+permission entries (see `bootstrap.py`).
+
+**Infra.** `precept/claude_md.py` (pure render/sync) called from `compile_all` (a side effect
+like the permissions sync; NOT counted in the HARD policy total) and from `uninstall`. Atomic
+writes via `safety.atomic_write_text`. SOFT (Claude Code delivers it as context after the
+system prompt). 14 tests in `tests/test_claude_md.py`.
 
 ## 4. Skill  (SOFT, not built)
 
