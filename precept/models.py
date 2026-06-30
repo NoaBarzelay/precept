@@ -276,6 +276,18 @@ class Lesson(BaseModel):
     what_to_do_instead: str = Field(description="the prefer-Y target, not just avoid-X")
     origin_quote: str = Field(default="", description="the user's exact words, if any")
 
+    # Proactive review (item 3): set when this lesson was just drafted from a correction
+    # and should be SURFACED to the user immediately (via the Stop/SessionStart hook's
+    # additionalContext: "I drafted a rule from your correction — keep it?"). It NEVER
+    # changes enforcement (that stays gated on status=ACTIVE); it only flags that the user
+    # has not yet been asked. Cleared once kept/vetoed.
+    needs_review: bool = False
+
+    # Governance (item 6): when this rule SUPERSEDES an older one, the older lesson's id.
+    # The superseded lesson is moved to ARCHIVED with a back-pointer; nothing is hard-deleted.
+    supersedes: str | None = None
+    superseded_by: str | None = None  # set on the OLD (archived) lesson -> the replacement id
+
     signals: GroundedSignals = Field(default_factory=GroundedSignals)
     policies: list[Policy] = Field(default_factory=list)
 
