@@ -44,10 +44,16 @@ def emit(obj: dict[str, Any]) -> None:
 
 
 # --- PreToolUse decisions ---------------------------------------------------
-def pretooluse_allow(updated_input: dict | None = None) -> dict:
+def pretooluse_allow(updated_input: dict | None = None, additional_context: str | None = None) -> dict:
+    """Allow the tool call. `additional_context`, when set, rides the SAME
+    hookSpecificOutput.additionalContext channel the docs define for PreToolUse (item A:
+    a context rule injects a non-blocking reminder on an allow). Empty/None -> omitted, so
+    the prior plain-allow shape is byte-for-byte unchanged."""
     out: dict[str, Any] = {"hookEventName": "PreToolUse", "permissionDecision": "allow"}
     if updated_input is not None:
         out["updatedInput"] = updated_input
+    if additional_context:
+        out["additionalContext"] = additional_context
     return {"hookSpecificOutput": out}
 
 

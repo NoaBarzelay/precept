@@ -95,6 +95,13 @@ def managed_permissions_manifest() -> Path:
     return state_dir() / "managed_permissions.json"
 
 
+def context_rules_path() -> Path:
+    """Authored context rules (item A): non-blocking PreToolUse reminders, stored as plain
+    JSON the enforce hot path reads directly (stdlib). It is authored CONFIG / source of
+    truth (not a derived cache), so it lives in precept_home alongside the other rules."""
+    return precept_home() / "context_rules.json"
+
+
 def claude_home() -> Path:
     """The user's real Claude Code config dir — a COMMIT target."""
     return _env_path("PRECEPT_CLAUDE_HOME", Path.home() / ".claude")

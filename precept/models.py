@@ -257,6 +257,28 @@ class Policy(BaseModel):
         return self
 
 
+class ContextRule(BaseModel):
+    """A NON-BLOCKING PreToolUse rule (item A): when a tool call matches (tool name +
+    an OPTIONAL file-path pattern), inject `text` as additionalContext to Claude Code on
+    an ALLOW, instead of allow/deny/rewrite. Pure DATA — never code; the enforce hot path
+    reads the plain-JSON form (stdlib) and concatenates the text of every match. A deny/ask
+    still wins and blocks; context rules only ADD text on an allow, never gate the call.
+
+    `path_pattern` is matched against the tool's `file_path` input (the standard Edit/Write/
+    Read field); None means the tool name alone is enough (e.g. a reminder on every Bash)."""
+
+    id: str
+    tool: str = Field(description="the Claude Code tool to match, e.g. 'Edit', 'Write', 'Read'")
+    path_pattern: str | None = Field(
+        default=None,
+        description="optional glob/regex over the tool's file_path; None = match any call to `tool`",
+    )
+    path_op: MatchOp = Field(
+        default=MatchOp.GLOB, description="how `path_pattern` is tested (glob or regex)"
+    )
+    text: str = Field(description="the reminder injected as additionalContext on a matching allow")
+
+
 class Lesson(BaseModel):
     """One correction/learning captured as auditable data; compiles to policies."""
 
