@@ -21,3 +21,10 @@ venv/
 catalog/*.md
 !catalog/README.md
 !catalog/example-*.md
+
+# Local dev / parallel-session state (never publish)
+.claude/
+.venv-review/
+
+# Local launch-prep working doc (do not publish)
+LAUNCH-CHECKLIST.md

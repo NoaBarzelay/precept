@@ -8,15 +8,15 @@ guarantee of compliance). Precept only claims enforcement for the HARD tier.
 
 | # | Type | Pillar | Tier | Claude Code target | Built |
 |---|------|--------|------|--------------------|-------|
-| 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | ✅ |
-| 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | ✅ |
-| 3 | CLAUDE.md edit | process | SOFT | `~/.claude/CLAUDE.md` / `.claude/rules/*.md` | ⬜ |
-| 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | ⬜ |
-| 5 | Agent persona | process | HARD (tools) + SOFT (prompt) | `.claude/agents/<n>.md` | ⬜ |
-| 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | ⬜ |
-| 7 | Slash command | process | SOFT | `.claude/skills/` or `.claude/commands/` | ⬜ |
-| 8 | MCP / tool config | process | config | `.mcp.json` / `mcpServers` | ⬜ |
-| 9 | Permission profile | process | HARD | `settings.json` `permissions` | 🟡 import + clean-ban write-back |
+| 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | shipped |
+| 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | shipped |
+| 3 | Convention (rules-file) | process | SOFT | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | shipped |
+| 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | planned |
+| 5 | Agent persona | process | HARD (tools) + SOFT (prompt) | `.claude/agents/<n>.md` | planned |
+| 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | planned |
+| 7 | Slash command | process | SOFT | `.claude/skills/` or `.claude/commands/` | planned |
+| 8 | MCP / tool config | process | config | `.mcp.json` / `mcpServers` | planned |
+| 9 | Permission profile | process | HARD | `settings.json` `permissions` | partial import + clean-ban write-back |
 
 ---
 
@@ -72,22 +72,54 @@ owns it. SOFT (recalled/injected, never enforced). Keyword-first; sqlite-vec sem
 + an ANN/HNSW index are deferred (a guarded ANN-watch seam suggests HNSW past ~1M vectors)
 until a Recall@k eval demands them.
 
-## 3. CLAUDE.md edit  (SOFT, not built)
+## 3. Convention (rules-file)  (SOFT, built)
+
+> Renamed from "CLAUDE.md edit". The old name was misleading: this artifact never
+> touches the user's `CLAUDE.md`. It writes a Precept-OWNED file under `.claude/rules/`.
+> The artifact is **procedural memory** (a learned rule/style/convention), the SOFT
+> sibling of a Rule. See `docs/CONVENTION-ARTIFACT.md` for the full design + roadmap.
 
 **What.** A standing directive or convention ("API handlers live in `src/api/`",
-"prefer composition over inheritance"). A soft process: always-on context.
+"prefer composition over inheritance"). A soft process: always-on (or path-scoped)
+context. The SOFT sibling of a Rule — same Lesson spine and keep/veto gate, but COMMIT
+writes TEXT into a file Claude Code reads instead of a gate into the hook cache.
 
 **When/how used.** Loaded at the start of every session as context. Best for
 conventions and preferences, never for hard rules (Claude Code: CLAUDE.md is "context,
 not enforced configuration, no guarantee of strict compliance").
 
-**Structure.** Precept lesson (`artifact_type=CLAUDE_MD`) -> a marker-delimited block
-appended to `~/.claude/CLAUDE.md` (user), `./CLAUDE.md` (project), or a path-scoped
-`.claude/rules/*.md` (loads only when matching files are touched). Marker delimiting
-lets Precept update or remove its own block atomically without disturbing yours.
+**Structure.** Precept lesson (`artifact_type=CONVENTION`) -> a Precept-OWNED file under
+`.claude/rules/`. We do NOT splice into the user's hand-written CLAUDE.md: the Claude Code
+docs (verified 2026-06-30, code.claude.com/docs/en/memory) don't endorse third-party in-place
+edits and recommend a decoupled file surfaced via the native `.claude/rules/` directory.
+Scope picks the file: GLOBAL -> `~/.claude/rules/precept-conventions.md` (no frontmatter, loads
+always); REPO -> `<root>/.claude/rules/precept-conventions.md`; LANGUAGE -> `~/.claude/rules/
+precept-<marker>.md` with a `paths:` glob frontmatter so Claude Code lazy-loads it only when a
+file of that language is touched (real path-scoping — what the Rule pillar deferred). Because
+Precept owns the WHOLE file, idempotency is "regenerate it" and uninstall is "delete it"; no
+marker bookkeeping. A sidecar manifest (`state_dir/managed_conventions.json`) records what we
+wrote so a recompile/uninstall removes only Precept's files, never the user's own rules.
 
-**Infra.** Atomic write into the real CLAUDE.md / `.claude/rules/`. SOFT (Claude Code
-delivers it as a user message after the system prompt).
+**Boundary.** Write-back is only for conventions Precept LEARNED. A CONVENTION lesson with
+`origin=BOOTSTRAP` was imported FROM the user's CLAUDE.md, so re-emitting it would duplicate
+the directive in context — skipped, mirroring how Precept never re-adopts the user's existing
+permission entries (see `bootstrap.py`).
+
+**Infra.** `precept/convention.py` (pure render/sync) called from `compile_all` (a side effect
+like the permissions sync; NOT counted in the HARD policy total) and from `uninstall`. Atomic
+writes via `safety.atomic_write_text`. SOFT (Claude Code delivers it as context after the
+system prompt). `ArtifactType` has a `_missing_` shim mapping the legacy `claude_md` value.
+14 tests in `tests/test_convention.py`.
+
+**Roadmap (procedural-memory alignment).** Today every active GLOBAL convention is written
+into one always-loaded file. Best practice (Anthropic context-engineering; Karpathy's
+index-first retrieval; Letta keeping procedural memory in a small always-in-context core and
+the vector store for facts only) says always-on context must stay lean. The planned evolution
+(see `docs/CONVENTION-ARTIFACT.md`): keep a tiny always-on core, move the long tail to
+relevance-gated injection keyed on the WORKING CONTEXT (files/tools/activity, not a user
+query), reusing the knowledge-pillar retrieval seam; a local vector layer only for the fuzzy
+subset, eval-gated. A vector DB is NOT the default: rule relevance is mostly structural
+(path/tool/activity), which deterministic matching + `paths:` globs already give, auditably.
 
 ## 4. Skill  (SOFT, not built)
 

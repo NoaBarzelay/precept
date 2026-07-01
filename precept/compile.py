@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import catalog, install, paths
+from . import catalog, convention, install, paths
 from .models import Decision, EnforcementTier, Lesson, Scope, Status
 from .safety import atomic_write_text
 
@@ -66,4 +66,8 @@ def compile_all(lessons: list[Lesson] | None = None) -> int:
     # De-dup + deterministic order so the settings write is idempotent.
     perm_rules = {b: sorted(set(v)) for b, v in perm_rules.items()}
     install.write_managed_permissions(perm_rules)
+    # CONVENTION artifact (SOFT): sync the ACTIVE conventions into Precept-owned
+    # `.claude/rules/*.md` files (a side effect like the permissions sync; NOT counted in
+    # the returned policy total, which is the HARD hook + permission count).
+    convention.write_managed_rules(lessons)
     return len(compiled) + sum(len(v) for v in perm_rules.values())

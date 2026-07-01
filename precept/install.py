@@ -129,6 +129,9 @@ def uninstall_from_file() -> Path:
     settings = strip_managed_permissions(_load(p), _load_manifest())
     _write_with_backup(p, strip_precept(settings))
     _save_manifest({"deny": [], "ask": []})  # we removed all of ours
+    from . import convention  # lazy: keep the hot import graph small
+
+    convention.strip_all()  # remove Precept-owned `.claude/rules/*.md` convention files
     return p
 
 

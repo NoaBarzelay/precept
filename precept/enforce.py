@@ -390,12 +390,13 @@ def evaluate_userpromptsubmit(
                         p.get("message") or _reason(v) or "Blocked by a Precept prompt rule."
                     )
 
-    # 3. Not blocking -> retrieval injection (slice 2): surface relevant vault knowledge as
+    # 3. Not blocking -> retrieval injection: surface (a) relevant vault knowledge (slice 2)
+    # and (b) relevant retrieval_only CONVENTIONS (P1, activity-keyed by prompt + cwd) as
     # additionalContext so the prompt proceeds already grounded. Cheap/bounded + FAIL-OPEN
-    # (no vault/index or any error => inject nothing, exactly the prior allow shape).
-    ctx = _knowledge_retrieval(prompt)
-    if ctx:
-        return cc.userpromptsubmit_context(ctx)
+    # (no vault/index/catalog or any error => inject nothing, exactly the prior allow shape).
+    parts = [c for c in (_knowledge_retrieval(prompt), _convention_retrieval(prompt, cwd)) if c]
+    if parts:
+        return cc.userpromptsubmit_context("\n\n".join(parts))
     return cc.userpromptsubmit_allow()
 
 
@@ -406,5 +407,17 @@ def _knowledge_retrieval(prompt: str) -> str | None:
         from .knowledge import retrieval
 
         return retrieval.retrieval_context(prompt)
+    except Exception:
+        return None
+
+
+def _convention_retrieval(prompt: str, cwd: str) -> str | None:
+    """Lazy bridge to activity-keyed CONVENTION retrieval (P1): inject the retrieval_only
+    conventions relevant to this prompt + cwd. Lazy import (pydantic/catalog) keeps the
+    deterministic hot path stdlib; any error yields None (fail-open)."""
+    try:
+        from . import convention
+
+        return convention.retrieval_context(prompt, cwd)
     except Exception:
         return None

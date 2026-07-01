@@ -115,7 +115,7 @@ def import_claude_md(text: str, *, limit: int = 50, today: _date | None = None) 
         out.append(Lesson(
             id=_slugify(directive), created=today or _date.today(),
             origin=Origin.BOOTSTRAP, source_session="bootstrap:CLAUDE.md",
-            status=Status.PENDING, artifact_type=ArtifactType.CLAUDE_MD,
+            status=Status.PENDING, artifact_type=ArtifactType.CONVENTION,
             scope=Scope.GLOBAL, determinism=Determinism.STYLISTIC,
             trigger=directive, what_was_wrong="(existing CLAUDE.md directive)",
             what_to_do_instead=directive, origin_quote=directive,

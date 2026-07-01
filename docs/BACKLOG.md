@@ -59,7 +59,7 @@ human. Realistic mechanisms (pick/combine):
 review"), possibly a SessionStart/UserPromptSubmit hook + its install entry.
 
 ### 4. AI-based claim / completion detection (trajectory rules) — NOT regex
-**Decision (Noa 2026-06-29): claim detection must be AI-based, not regex.**
+**Decision (2026-06-29): claim detection must be AI-based, not regex.**
 **Why.** A trajectory rule decides "is the agent claiming success?" via a brittle regex
 (`claim_pattern`): false positives ("not done yet" contains "done"), false negatives
 ("shipped it", "ready to merge"), English-only, phrasing-dependent.
@@ -108,7 +108,7 @@ Remaining at the time:
   sqlite-vec `vectors` table deferred, local model only so knowledge never leaves the machine).
 - **Daily integrity audit** (scheduled): re-runs the auditor, surfaces rename/placement/
   missing-frontmatter/unfiled-knowledge proposals as PENDING (block/propose, never silent).
-  - **ANN watch (Noa 2026-06-30):** the daily audit also watches the `vectors` table size.
+  - **ANN watch (2026-06-30):** the daily audit also watches the `vectors` table size.
     Nearest-neighbor is brute-force (fine to ~tens of thousands of vectors). When the count
     crosses the threshold where brute-force scan gets slow (~1M), the audit SUGGESTS
     implementing an ANN graph index (HNSW). Suggestion only, surfaced like any other finding.

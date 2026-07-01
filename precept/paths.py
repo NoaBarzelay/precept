@@ -121,6 +121,11 @@ def watched_files_config() -> Path:
     (item B-3). Authored CONFIG (the paths are user-specific and supplied at runtime — the
     repo ships none), so it lives in precept_home. May also come from $PRECEPT_WATCHED_FILES."""
     return precept_home() / "watched_files.json"
+def managed_conventions_manifest() -> Path:
+    """The set of `.claude/rules/*.md` convention files Precept last wrote (the CONVENTION
+    artifact). Lets a re-sync / uninstall delete ONLY files Precept created, never the
+    user's own rules files. Local/derived/rebuildable."""
+    return state_dir() / "managed_conventions.json"
 
 
 def claude_home() -> Path:

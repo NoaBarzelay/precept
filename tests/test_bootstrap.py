@@ -60,5 +60,5 @@ def test_bootstrap_imports_permissions_and_claude_md(tmp_path, monkeypatch):
     hard = [le for le in minted if le.policies]
     soft = [le for le in minted if not le.policies]
     assert len(hard) == 3  # 2 deny + 1 ask, all compiled to policies
-    assert all(le.artifact_type == ArtifactType.CLAUDE_MD for le in soft)
+    assert all(le.artifact_type == ArtifactType.CONVENTION for le in soft)
     assert len(soft) == 2  # 2 CLAUDE.md bullets

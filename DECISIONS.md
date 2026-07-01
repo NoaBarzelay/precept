@@ -1,11 +1,9 @@
 # Decision log
 
-The full design + research arc lives in the private project brief. This is the
-in-repo summary of the load-bearing engineering decisions, with the *why*.
+This is the in-repo summary of the load-bearing engineering decisions, with the *why*.
 
 ## Language & shape
-- **Python**, local-first CLI + hooks (not a web app). Deliberately the inverse of
-  the author's TypeScript project: runtime chosen by product center-of-gravity. The
+- **Python**, local-first CLI + hooks (not a web app). Runtime chosen by product center-of-gravity. The
   product is a local enforcement daemon + catalog + eval harness, where Python is
   the lingua franca (Anthropic SDK, Claude Code hook examples, eval tooling).
 

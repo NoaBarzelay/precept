@@ -154,7 +154,7 @@ def _vectors_row_count(db_path: Path) -> int | None:
 
 
 def ann_watch(db_path: Path | None = None) -> Proposal | None:
-    """Guarded ANN-watch (Noa 2026-06-30). Nearest-neighbor recall over `vectors` is
+    """Guarded ANN-watch. Nearest-neighbor recall over `vectors` is
     brute-force, fine to ~tens of thousands of rows. When the count crosses
     ANN_ROW_THRESHOLD (~1M) — where brute-force scan gets slow — SUGGEST adding an HNSW
     index.
