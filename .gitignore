@@ -26,6 +26,7 @@ catalog/*.md
 .claude/
 .venv-review/
 
-# Local launch-prep working doc (do not publish)
+# Local launch-prep working docs (do not publish)
 LAUNCH-CHECKLIST.md
 HANDOFF.md
+HANDOFF-*.md
