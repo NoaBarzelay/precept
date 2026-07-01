@@ -86,6 +86,36 @@ def test_enforce_fails_open_when_judge_unavailable():
     ) == {}
 
 
+def test_judgment_stop_dedupes_per_session():
+    """A judgment Stop rule blocks AT MOST ONCE per session, then stops nagging — so a
+    judgment nudge can never loop every turn (the always-explain-from-first-principles bug).
+    State is isolated by conftest's temp state dir."""
+    vf = lambda q, c: {"j": {"ok": False, "reason": "stub left"}}  # noqa: E731
+    first = enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=vf, session_id="sess-A")
+    assert first.get("decision") == "block"
+    second = enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=vf, session_id="sess-A")
+    assert second == {}  # already surfaced this session -> no repeat block
+    # A DIFFERENT session still gets its own first block.
+    other = enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=vf, session_id="sess-B")
+    assert other.get("decision") == "block"
+    # No session_id (the eval-harness path) -> dedupe disabled, always evaluates.
+    assert enforce.evaluate_stop_entries(TRANSCRIPT, [JUDGMENT_POLICY], verdict_fn=vf).get("decision") == "block"
+
+
+def test_trajectory_stop_not_deduped_blocks_until_satisfied():
+    """A trajectory rule (required tool call missing) is NOT deduped: it must keep blocking
+    across turns until the step actually runs, because that self-terminates and never loops."""
+    traj = {
+        "id": "t", "lesson_id": "tests-first", "enforcement_tier": "hard",
+        "hook_event": "Stop", "check_kind": "trajectory", "decision": "deny",
+        "message": "Run tests first.", "trajectory": {"requires": {"tool": "Bash", "conditions": []}},
+    }
+    vf = lambda q, c: {"t": {"ok": False, "reason": "no tests"}}  # noqa: E731
+    a = enforce.evaluate_stop_entries(TRANSCRIPT, [traj], verdict_fn=vf, session_id="sess-C")
+    b = enforce.evaluate_stop_entries(TRANSCRIPT, [traj], verdict_fn=vf, session_id="sess-C")
+    assert a.get("decision") == "block" and b.get("decision") == "block"  # both block, not deduped
+
+
 def test_judgment_applies_when_skips_for_free():
     # gate requires an Edit; TRANSCRIPT has none -> rule skipped, model never called.
     def _boom(q, c):

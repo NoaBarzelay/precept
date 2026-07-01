@@ -2,7 +2,7 @@
 
 Frontmatter carries every structured field (so parsing is exact and lossless);
 the body is a human-readable rendering. Cards are written atomically. The catalog
-dir is git-init'd elsewhere so `git log -- <card>.md` is the lifecycle audit trail.
+dir holds plain-text cards; kept under git, `git log -- <card>.md` gives the lifecycle history.
 """
 
 from __future__ import annotations

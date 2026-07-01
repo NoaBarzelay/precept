@@ -245,11 +245,45 @@ def _reason(v: Any) -> str:
     return got or ""
 
 
+def _stop_already_surfaced(session_id: str, policy_id: str) -> bool:
+    """Has this judgment Stop policy already blocked once this session? Per-session dedupe
+    so a judgment nudge fires ONCE and never nags every turn. FAIL-OPEN: any error -> treat
+    as not-yet-surfaced (worst case one extra nudge, never a crash)."""
+    if not session_id:
+        return False
+    try:
+        led = json.loads(paths.stop_surfaced_ledger().read_text())
+        return policy_id in led.get(session_id, [])
+    except Exception:
+        return False
+
+
+def _mark_stop_surfaced(session_id: str, policy_id: str) -> None:
+    """Record that a judgment Stop policy blocked this session. FAIL-OPEN and atomic."""
+    if not session_id:
+        return
+    try:
+        p = paths.stop_surfaced_ledger()
+        try:
+            led = json.loads(p.read_text())
+        except Exception:
+            led = {}
+        led.setdefault(session_id, [])
+        if policy_id not in led[session_id]:
+            led[session_id].append(policy_id)
+        from .safety import atomic_write_text
+
+        atomic_write_text(p, json.dumps(led))
+    except Exception:
+        pass  # fail open: a ledger write must never wedge a session
+
+
 def evaluate_stop_entries(
     entries: list[dict[str, Any]],
     policies: list[dict[str, Any]],
     verdict_fn: Callable[[list, str], dict | None] | None = None,
     cwd: str = "",
+    session_id: str = "",
 ) -> dict:
     """Evaluate Stop rules over already-parsed transcript entries (also used by the
     eval harness, which supplies inline transcripts).
@@ -324,6 +358,14 @@ def evaluate_stop_entries(
         v = result.get(q["id"])
         if v is not None and not _ok(v):  # missing id => ok (default-safe)
             p = by_id[q["id"]]
+            # Per-session dedupe for JUDGMENT rules: a judgment nudge has no objective,
+            # satisfiable condition, so block it AT MOST ONCE per session then stop nagging.
+            # (Trajectory rules keep blocking until the required call happens — that self-
+            # terminates once the step runs, so it never loops.)
+            if p.get("check_kind") == "judgment" and session_id:
+                if _stop_already_surfaced(session_id, q["id"]):
+                    continue  # already surfaced this session -> do not block again
+                _mark_stop_surfaced(session_id, q["id"])
             return cc.stop_block(p.get("message") or _reason(v) or "A required standard was not met.")
     return cc.stop_allow()
 
@@ -333,7 +375,12 @@ def evaluate_stop(event: dict[str, Any], policies: list[dict[str, Any]] | None =
     while the agent is claiming success. Reads the transcript from the event."""
     pols = policies if policies is not None else load_compiled()
     entries = cc.read_transcript(event.get("transcript_path", ""))
-    return evaluate_stop_entries(entries, pols, cwd=event.get("cwd", "") or "")
+    return evaluate_stop_entries(
+        entries,
+        pols,
+        cwd=event.get("cwd", "") or "",
+        session_id=str(event.get("session_id", "") or ""),
+    )
 
 
 def evaluate_userpromptsubmit(

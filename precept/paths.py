@@ -24,7 +24,7 @@ def _env_path(var: str, default: Path) -> Path:
 
 def precept_home() -> Path:
     """Catalog of rule-cards + config. A real local dir (default ~/.precept),
-    git-init'd for the audit log."""
+    plain-text and diffable, so it can be kept under version control for a full history."""
     return _env_path("PRECEPT_HOME", Path.home() / ".precept")
 
 
@@ -121,11 +121,20 @@ def watched_files_config() -> Path:
     (item B-3). Authored CONFIG (the paths are user-specific and supplied at runtime — the
     repo ships none), so it lives in precept_home. May also come from $PRECEPT_WATCHED_FILES."""
     return precept_home() / "watched_files.json"
+
+
 def managed_conventions_manifest() -> Path:
     """The set of `.claude/rules/*.md` convention files Precept last wrote (the CONVENTION
     artifact). Lets a re-sync / uninstall delete ONLY files Precept created, never the
     user's own rules files. Local/derived/rebuildable."""
     return state_dir() / "managed_conventions.json"
+
+
+def stop_surfaced_ledger() -> Path:
+    """Per-session record of which JUDGMENT Stop policies have already blocked once, so a
+    judgment nudge surfaces ONCE per session and never nags every turn. Keyed by session_id.
+    Derived/disposable/local (state dir); safe to delete (worst case, one extra nudge)."""
+    return state_dir() / "stop_surfaced.json"
 
 
 def claude_home() -> Path:

@@ -20,7 +20,7 @@ This is the in-repo summary of the load-bearing engineering decisions, with the 
 - Decision precedence (Cedar/OPA): **deny > ask > rewrite > allow**; no match → allow.
 
 ## Storage (local-first)
-- **Markdown cards = source of truth** (safe in the synced vault; git = audit log).
+- **Markdown cards = source of truth** (safe in the synced vault; plain-text and diffable, so the catalog can be kept under version control for a full lifecycle history).
 - **Derived SQLite/policy cache = local disk only** (`~/.local/state/precept`), never
   a cloud-synced folder — SQLite corrupts under iCloud/Dropbox/NFS sync (SQLite's own
   `howtocorrupt`). It's disposable; `precept compile`/`reindex` rebuilds it.

@@ -17,9 +17,21 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 
 from .models import (
-    CheckKind, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
+    ArtifactType, CheckKind, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
     Match, MatchOp, Policy, TrajectorySpec,
 )
+
+# Artifact types that are inherently SOFT: a voice/format directive, a recalled fact, or
+# a procedure has no objective, satisfiable Stop condition, so there is no meaningful
+# blocking gate for them. They must NEVER compile to a HARD Stop verdict gate even if
+# DETECT labeled the lesson "judgment" — otherwise a stylistic preference ("explain from
+# first principles") becomes a Stop block that fires every single turn, with nothing that
+# can ever satisfy it. Gate-able judgment (e.g. "no stub code") stays HARD via RULE.
+_NON_GATEABLE_ARTIFACTS = frozenset({
+    ArtifactType.OUTPUT_STYLE,
+    ArtifactType.KNOWLEDGE,
+    ArtifactType.SKILL,
+})
 
 SYNTH_MODEL = "claude-sonnet-4-6"
 
@@ -293,6 +305,12 @@ def compile_lesson(lesson: Lesson, client: Any | None = None) -> Lesson:
     if lesson.policies:
         return lesson
     if lesson.determinism == Determinism.JUDGMENT:
+        # A voice/recall/procedure artifact has no satisfiable Stop gate — never compile it
+        # to a HARD block (it would nag every turn forever). Keep it honestly soft.
+        if lesson.artifact_type in _NON_GATEABLE_ARTIFACTS:
+            lesson.determinism = Determinism.STYLISTIC
+            lesson.signals.deterministic_by_construction = False
+            return lesson
         lesson.policies = [_judgment_policy(lesson)]
         return lesson
     policy = synthesize_policy(lesson, client)

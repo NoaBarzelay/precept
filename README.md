@@ -34,8 +34,8 @@ session transcript
    REVIEW   `precept keep` / `precept delete`. The human gate, and the credibility
             core: nothing enforces until a person keeps it. PENDING -> ACTIVE.
       v
-   COMMIT   markdown card is the source of truth (safe in a synced vault, git is
-            the audit log); compiled policies.json is the disposable hot path,
+   COMMIT   markdown card is the source of truth (plain text, diffable, safe in a
+            synced vault); compiled policies.json is the disposable hot path,
             rebuildable from the cards.
       v
    ENFORCE  PreToolUse / Stop / UserPromptSubmit hooks read the JSON cache.
@@ -136,7 +136,7 @@ Precept also ran an explicit conformance audit of itself against Anthropic's own
 ```bash
 git clone https://github.com/NoaBarzelay/precept && cd precept
 uv venv && uv pip install -e ".[dev]"
-pytest -q            # 175 tests, fully offline/hermetic (LLM seams are injectable)
+pytest -q            # 231 tests, fully offline/hermetic (LLM seams are injectable)
 
 precept install                 # wire Precept's hooks into ~/.claude (idempotent, atomic, backed up)
 precept bootstrap               # seed PENDING lessons from your setup: permission rules -> ready-to-enforce, CLAUDE.md -> soft
@@ -147,11 +147,11 @@ precept evals                   # the deterministic scorecard (100% recall, 0 fa
 precept doctor                  # resolved paths + the sync-safety check + hook reachability
 ```
 
-The learning loop (DETECT, COMPILE, judgment verdicts) needs an LLM, via a billed `ANTHROPIC_API_KEY` through the Anthropic SDK. The client is injected at every seam (a `FakeClient` in the tests), so all 175 tests run offline. The **enforcement engine itself runs with zero LLM.** Detection and compilation need a model; blocking a tool call at runtime does not, which is why the hot path is stdlib-only and fast.
+The learning loop (DETECT, COMPILE, judgment verdicts) needs a model, and there are two backends (`precept/inference.py`, selected by `PRECEPT_INFERENCE`). The default (`auto`) uses your Claude subscription through the local `claude` CLI when it is available and no API key is set: mint a one-time token with `claude setup-token`, export it as `CLAUDE_CODE_OAUTH_TOKEN`, and the flows run on your plan. Set `PRECEPT_INFERENCE=sdk` (with a billed `ANTHROPIC_API_KEY`) to use the raw Anthropic SDK instead. The client is injected at every seam (a `FakeClient` in the tests), so all 231 tests run offline. The **enforcement engine itself runs with zero LLM.** Detection and compilation need a model; blocking a tool call at runtime does not, which is why the hot path is stdlib-only and fast.
 
 ## Status
 
-Early, but the core loop is real and tested: correct, detect, keep, block, with 175 hermetic tests and a CI-gated deterministic eval. The three shipped artifacts work end to end; the other six are designed and sequenced.
+Early, but the core loop is real and tested: correct, detect, keep, block, with 231 hermetic tests and a CI-gated deterministic eval. The three shipped artifacts work end to end; the other six are designed and sequenced.
 
 Built with Claude Code. A tool that governs an AI agent, built using that agent, where the architecture, the decisions, and the eval methodology are mine. That the author can say precisely which parts the model did and which parts are the design is itself the signal.
 

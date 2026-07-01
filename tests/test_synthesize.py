@@ -4,8 +4,8 @@ from datetime import date
 
 from precept import synthesize
 from precept.models import (
-    CheckKind, Condition, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
-    Match, MatchOp, Origin,
+    ArtifactType, CheckKind, Condition, Decision, Determinism, EnforcementTier, HookEvent,
+    Lesson, Match, MatchOp, Origin,
 )
 from precept.synthesize import PolicyDraft, validate_match
 
@@ -67,6 +67,38 @@ def test_cannot_compile_returns_none_and_downgrades_to_soft():
     le = synthesize.compile_lesson(_lesson(), client=FakeClient(draft))
     assert le.policies == []
     assert le.determinism == Determinism.STYLISTIC  # honest downgrade
+
+
+def test_output_style_judgment_never_compiles_to_hard_gate():
+    """A voice / output-style directive labeled 'judgment' must NOT become a HARD Stop gate:
+    there is no objective, satisfiable condition for 'use this voice', so a gate would nag
+    every turn forever. It stays honestly soft. (Regression for the always-explain loop.)"""
+    le = _lesson(Determinism.JUDGMENT)
+    le.artifact_type = ArtifactType.OUTPUT_STYLE
+    out = synthesize.compile_lesson(le, client=FakeClient(raises=True))  # must not need the model
+    assert out.policies == []
+    assert out.determinism == Determinism.STYLISTIC
+    assert out.signals.deterministic_by_construction is False
+
+
+def test_knowledge_and_skill_judgment_also_stay_soft():
+    for at in (ArtifactType.KNOWLEDGE, ArtifactType.SKILL):
+        le = _lesson(Determinism.JUDGMENT)
+        le.artifact_type = at
+        out = synthesize.compile_lesson(le, client=FakeClient(raises=True))
+        assert out.policies == [], at
+        assert out.determinism == Determinism.STYLISTIC, at
+
+
+def test_rule_judgment_still_compiles_to_hard_stop_gate():
+    """Regression guard the other way: a gate-able judgment (default RULE artifact, e.g.
+    'no stub code') still gets its HARD Stop verdict gate."""
+    le = _lesson(Determinism.JUDGMENT)  # artifact_type defaults to RULE
+    out = synthesize.compile_lesson(le)  # judgment gate needs no model
+    assert len(out.policies) == 1
+    assert out.policies[0].hook_event == HookEvent.STOP
+    assert out.policies[0].check_kind == CheckKind.JUDGMENT
+    assert out.policies[0].enforcement_tier == EnforcementTier.HARD
 
 
 def test_stylistic_lesson_never_calls_model():
