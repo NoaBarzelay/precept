@@ -8,7 +8,7 @@ missing-sources-section, misplacement candidates, and date-suffix-strip COLLISIO
 never mutates the vault unless explicitly told to), and when applied it renames the
 file AND rewrites every inbound `[[oldstem]]` -> `[[newstem]]` across the vault, each
 write atomic. It SKIPS `type: note` files unless `include_notes=True` — Claude must
-never rename Noa's own note files without an explicit opt-in.
+never rename the user's own note files without an explicit opt-in.
 
 Non-English names are flagged but NOT auto-translated: the proposed English name is
 left as a TODO for the caller/AI to fill (no hardcoded translation table).
@@ -276,7 +276,7 @@ def apply_plan(
     inbound [[oldstem]] -> [[newstem]] vault-wide.
 
     SAFETY: a `type: note` file is SKIPPED unless `include_notes=True` (Claude must not
-    rename Noa's own notes without an explicit opt-in). A target that already exists is
+    rename the user's own notes without an explicit opt-in). A target that already exists is
     skipped as a collision (never clobber)."""
     vault = Path(vault)
     res = ApplyResult(dry_run=dry_run)

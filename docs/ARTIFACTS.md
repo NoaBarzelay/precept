@@ -8,15 +8,15 @@ guarantee of compliance). Precept only claims enforcement for the HARD tier.
 
 | # | Type | Pillar | Tier | Claude Code target | Built |
 |---|------|--------|------|--------------------|-------|
-| 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | ✅ |
-| 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | ✅ |
-| 3 | Convention (rules-file) | process | SOFT | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | ✅ |
-| 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | ⬜ |
-| 5 | Agent persona | process | HARD (tools) + SOFT (prompt) | `.claude/agents/<n>.md` | ⬜ |
-| 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | ⬜ |
-| 7 | Slash command | process | SOFT | `.claude/skills/` or `.claude/commands/` | ⬜ |
-| 8 | MCP / tool config | process | config | `.mcp.json` / `mcpServers` | ⬜ |
-| 9 | Permission profile | process | HARD | `settings.json` `permissions` | 🟡 import + clean-ban write-back |
+| 1 | Rule | process | HARD | hooks (PreToolUse/Stop/UserPromptSubmit) + permission deny | shipped |
+| 2 | Knowledge note | entity/data | SOFT (recall) | Precept-native (FTS index, injected/recalled) | shipped |
+| 3 | Convention (rules-file) | process | SOFT | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | shipped |
+| 4 | Skill | process | SOFT | `.claude/skills/<n>/SKILL.md` | planned |
+| 5 | Agent persona | process | HARD (tools) + SOFT (prompt) | `.claude/agents/<n>.md` | planned |
+| 6 | Output style | process | SOFT | `.claude/output-styles/<n>.md` | planned |
+| 7 | Slash command | process | SOFT | `.claude/skills/` or `.claude/commands/` | planned |
+| 8 | MCP / tool config | process | config | `.mcp.json` / `mcpServers` | planned |
+| 9 | Permission profile | process | HARD | `settings.json` `permissions` | partial import + clean-ban write-back |
 
 ---
 

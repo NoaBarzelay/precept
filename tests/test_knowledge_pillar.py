@@ -210,7 +210,7 @@ def test_apply_plan_applied_renames_and_rewrites_links(vault):
 def test_apply_plan_skips_notes_unless_included(vault):
     # A type:note file with a mechanical rename reason (underscore).
     note = _write(vault, "Personal/my_private_note.md",
-                  "---\ntype: note\n---\n# my private note\n\nNoa's own thinking\n")
+                  "---\ntype: note\n---\n# my private note\n\nthe user's own thinking\n")
     plan = _plan_for(vault, "Personal/my_private_note.md")
     assert plan, "expected a rename plan item for the note"
 

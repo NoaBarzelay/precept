@@ -9,7 +9,7 @@ authors = [{ name = "Noa Barzelay" }]
 keywords = ["claude-code", "hooks", "guardrails", "policy-as-code", "agent-reliability", "evals"]
 
 dependencies = [
-    "anthropic>=0.40",   # DETECT: classify whether the user corrected the agent
+    "anthropic>=0.112",  # DETECT/COMPILE/judge use messages.parse(output_format=...), added in recent SDKs; 0.112 is the verified-working floor
     "pydantic>=2.0",     # the typed spine: Lesson + Policy IR
     "typer>=0.12",       # the catalog CLI (list/show/why/keep/delete)
     "pyyaml>=6.0",       # markdown-card frontmatter
