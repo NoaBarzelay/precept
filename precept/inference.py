@@ -28,7 +28,10 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from typing import Any
+
+from . import paths
 
 # The model ids precept passes (CLASSIFIER_MODEL / JUDGE_MODEL / SYNTH_MODEL etc.) are
 # the bare aliases the claude CLI's --model flag accepts directly (e.g. claude-haiku-4-5).
@@ -183,3 +186,102 @@ def _sdk_client() -> Any:
     import anthropic
 
     return anthropic.Anthropic()
+
+
+# ---------------------------------------------------------------------------
+# Inference health — de-silence the LLM flows' auth/reachability (option C).
+#
+# The five flows (DETECT, COMPILE, the 3 JUDGE verdicts) are each wrapped fail-closed
+# (DETECT abstains) or fail-open (JUDGE returns None) so a model hiccup never wedges a
+# session. That same wrapper also HIDES a total failure: on a machine with no usable
+# credentials every call raises "Could not resolve authentication method" and the whole
+# self-improving loop goes inert with zero signal. These helpers are the honesty layer —
+# `note_failure` records the last error per flow, `last_failures`/`probe` are what
+# `precept doctor` reads to surface inference health. All best-effort and FAIL-OPEN.
+# ---------------------------------------------------------------------------
+
+# Substrings that mark a PERSISTENT auth/config problem (worth flagging loudly) vs a
+# transient model/network error (a blip). Matched against the exception text, lowercased.
+_AUTH_MARKERS = (
+    "could not resolve authentication",
+    "authentication",
+    "x-api-key",
+    "api_key",
+    "auth_token",
+    "401",
+    "unauthorized",
+    "not logged in",
+)
+
+
+def is_auth_error(exc: BaseException) -> bool:
+    """True if `exc` looks like a credentials/config problem (persistent) rather than a
+    transient model or network error. Used to classify the failure for the operator."""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(m in text for m in _AUTH_MARKERS)
+
+
+def note_failure(flow: str, exc: BaseException) -> None:
+    """Record the last inference failure for `flow`. Best-effort, FAIL-OPEN — any error
+    here is swallowed; recording a failure must never create one. Local/derived state."""
+    try:
+        path = paths.inference_health()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (OSError, ValueError):
+            data = {}
+        data[flow] = {
+            "ts": time.time(),
+            "error_type": type(exc).__name__,
+            "message": str(exc)[:300],
+            "auth_error": is_auth_error(exc),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except Exception:
+        return  # fail-open
+
+
+def last_failures() -> dict[str, Any]:
+    """The recorded per-flow last-failure map (empty if none / unreadable)."""
+    try:
+        data = json.loads(paths.inference_health().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def probe(client: Any | None = None) -> tuple[bool, str]:
+    """Actively test that inference is reachable. Returns (ok, detail).
+
+    Probes the ACTIVE backend (get_client): the CLI/subscription default when `claude` is
+    on PATH and no key is set, else the raw SDK. Cost: on the SDK path with no creds, the
+    error is client-side (zero tokens); a working call spends ~1 token. So `doctor` can
+    call this safely. An injected client (tests) skips backend selection."""
+    try:
+        if client is None:
+            client = get_client()
+        from pydantic import BaseModel
+
+        class _Ping(BaseModel):
+            ok: bool
+
+        resp = client.messages.parse(
+            model="claude-haiku-4-5",
+            max_tokens=8,
+            messages=[{"role": "user", "content": "reply ok=true"}],
+            output_format=_Ping,
+        )
+        # Record usage if the meter is wired (a successful probe is a real call).
+        try:
+            from . import meter
+
+            meter.record("probe", "claude-haiku-4-5", resp)
+        except Exception:
+            pass
+        return True, "reachable"
+    except Exception as exc:  # noqa: BLE001 — report any failure as the detail
+        kind = "auth/config" if is_auth_error(exc) else "transient"
+        return False, f"{kind}: {type(exc).__name__}: {str(exc)[:160]}"

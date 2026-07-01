@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
+from . import meter
 from .models import (
     ArtifactType, CheckKind, Decision, Determinism, EnforcementTier, HookEvent, Lesson,
     Match, MatchOp, Policy, TrajectorySpec,
@@ -241,8 +242,12 @@ def synthesize_policy(lesson: Lesson, client: Any | None = None) -> Policy | Non
             messages=[{"role": "user", "content": context}],
             output_format=PolicyDraft,
         )
+        meter.record(meter.COMPILE, SYNTH_MODEL, resp)
         return _draft_to_policy(lesson, resp.parsed_output)
-    except Exception:
+    except Exception as exc:
+        from . import inference
+
+        inference.note_failure(meter.COMPILE, exc)  # de-silence; still fail closed
         return None  # fail closed: no policy rather than a wrong one
 
 
