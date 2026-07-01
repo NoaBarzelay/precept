@@ -7,8 +7,9 @@ from precept.knowledge import index as kx
 
 
 def test_fts_or_query_drops_stopwords_and_dedupes():
-    q = kx._fts_query("the do all of the code and the code vault work", match_any=True)
-    for stop in ('"the"', '"do"', '"of"', '"and"', '"all"'):
+    q = kx._fts_query("the of and is to the code and the code vault", match_any=True)
+    # true stopwords (present in _ROUTE_STOPWORDS) are dropped from the OR query
+    for stop in ('"the"', '"of"', '"and"', '"is"', '"to"'):
         assert stop not in q, stop
     assert '"code"' in q and '"vault"' in q and " OR " in q
     assert q.count('"code"') == 1  # deduped, not repeated
