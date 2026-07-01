@@ -24,10 +24,29 @@ import hashlib
 import os
 import re
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
 from ..safety import connect_db
+
+# Bound the recall-biased OR query: a free-text prompt can be hundreds of words, and OR-ing
+# them all (especially common ones) unions almost the whole corpus into the BM25 candidate
+# set — an O(vault) CPU spin on a large vault. Keep only the most distinctive few.
+_MAX_QUERY_TERMS = 24
+# Hard wall-clock ceiling for any single FTS query, enforced via a SQLite progress handler.
+# Defense in depth: even a pathological query can never peg the CPU on the per-prompt hot
+# path; on abort the caller fails open (injects nothing).
+_QUERY_BUDGET_S = 1.5
+
+
+def _install_query_ceiling(conn: sqlite3.Connection, budget_s: float = _QUERY_BUDGET_S) -> None:
+    start = time.monotonic()
+
+    def _abort() -> int:
+        return 1 if (time.monotonic() - start) > budget_s else 0
+
+    conn.set_progress_handler(_abort, 20000)  # checked every ~20k VM steps
 from . import frontmatter
 
 # Folders exempt from the two-type scheme (mirrors the vault convention doc): the
@@ -194,6 +213,7 @@ def search(db_path: Path, query: str, k: int = 10, *, match_any: bool = False) -
     if not match:
         return []
     conn = connect_db(Path(db_path))
+    _install_query_ceiling(conn)
     try:
         rows = conn.execute(
             "SELECT d.path, d.title, d.folder, d.type, d.updated, "
@@ -204,6 +224,8 @@ def search(db_path: Path, query: str, k: int = 10, *, match_any: bool = False) -
             "ORDER BY score LIMIT ?",
             (match, k),
         ).fetchall()
+    except sqlite3.OperationalError:
+        return []  # query aborted by the time ceiling (or FTS error) -> fail open
     finally:
         conn.close()
     return [
@@ -222,8 +244,25 @@ def _fts_query(query: str, *, match_any: bool = False) -> str:
     terms = re.findall(r"\w+", query or "")
     if not terms:
         return ""
-    quoted = [f'"{t}"' for t in terms]
-    return " OR ".join(quoted) if match_any else " ".join(quoted)
+    if match_any:
+        # Recall-biased OR query (retrieval injection / routing over a free-text sentence):
+        # drop stopwords and 1-2 char tokens and CAP the term count, so ultra-common words
+        # don't OR the whole corpus into the BM25 candidate set (the cause of the multi-second
+        # CPU spin on a large vault). Dedupe, preserve order, keep the first _MAX_QUERY_TERMS.
+        seen: set[str] = set()
+        kept: list[str] = []
+        for t in terms:
+            tl = t.lower()
+            if len(tl) <= 2 or tl in _ROUTE_STOPWORDS or tl in seen:
+                continue
+            seen.add(tl)
+            kept.append(t)
+            if len(kept) >= _MAX_QUERY_TERMS:
+                break
+        if not kept:
+            return ""
+        return " OR ".join(f'"{t}"' for t in kept)
+    return " ".join(f'"{t}"' for t in terms)
 
 
 def inbound_link_count(db_path: Path, stem: str) -> int:
