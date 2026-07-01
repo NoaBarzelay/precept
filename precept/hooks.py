@@ -6,13 +6,25 @@ enforces nothing.)
 
 from __future__ import annotations
 
+import os
 import sys
 
 from .adapters import claude_code as cc
 from . import enforce
 
 
+# Re-entrancy guard. Precept's judge/DETECT paths can shell out to `claude -p` (and to
+# `python -m precept detect`), which re-read ~/.claude/settings.json and would fire
+# these same hooks again — an unbounded fork bomb. Every precept-spawned subprocess
+# sets PRECEPT_SUBPROCESS=1 (see _spawn_detect and inference); when a hook sees it, it
+# no-ops so nested precept work never re-triggers precept. FAIL-OPEN by design.
+def _reentrant() -> bool:
+    return os.environ.get("PRECEPT_SUBPROCESS") == "1"
+
+
 def pretooluse_main() -> int:
+    if _reentrant():
+        return 0
     try:
         cc.emit(enforce.evaluate_pretooluse(cc.read_event()))
     except Exception:
@@ -21,6 +33,8 @@ def pretooluse_main() -> int:
 
 
 def stop_main() -> int:
+    if _reentrant():
+        return 0
     try:
         event = cc.read_event()
         out = enforce.evaluate_stop(event)
@@ -41,6 +55,8 @@ def sessionstart_main() -> int:
       - slice 2: a bounded RETRIEVAL of relevant vault KNOWLEDGE for the session's opening
         context (derived from the last user turn in the transcript, when available).
     Both are FAIL-OPEN; nothing to surface -> emit nothing."""
+    if _reentrant():
+        return 0
     try:
         event = cc.read_event()
         parts = [
@@ -58,6 +74,8 @@ def sessionstart_main() -> int:
 
 
 def userpromptsubmit_main() -> int:
+    if _reentrant():
+        return 0
     try:
         cc.emit(enforce.evaluate_userpromptsubmit(cc.read_event()))
     except Exception:
@@ -67,6 +85,8 @@ def userpromptsubmit_main() -> int:
 
 def detect_main() -> int:
     """SessionEnd entrypoint: kick DETECT off, detached, and return immediately."""
+    if _reentrant():
+        return 0
     try:
         _spawn_detect(cc.read_event())
     except Exception:
@@ -162,6 +182,7 @@ def _spawn_detect(event: dict) -> None:
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env={**os.environ, "PRECEPT_SUBPROCESS": "1"},
     )
 
 
