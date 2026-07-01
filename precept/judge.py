@@ -37,9 +37,7 @@ class Verdict(BaseModel):
 def verdict(judgment_prompt: str, context: str, client: Any | None = None) -> Verdict | None:
     try:
         if client is None:
-            import anthropic
-
-            client = anthropic.Anthropic()
+            client = inference.make_client()
         resp = client.messages.parse(
             model=JUDGE_MODEL,
             max_tokens=512,
@@ -110,9 +108,7 @@ def consolidated_verdict(
         return {}
     try:
         if client is None:
-            import anthropic
-
-            client = anthropic.Anthropic()
+            client = inference.make_client()
         listing = "\n".join(
             f"- id={q.id} kind={q.kind}: {q.prompt}" for q in questions
         )
@@ -158,9 +154,7 @@ def conflict_verdict(rule_a: str, rule_b: str, client: Any | None = None) -> Con
     None as 'no conflict' — fail-open: never propose retiring a rule on a model hiccup)."""
     try:
         if client is None:
-            import anthropic
-
-            client = anthropic.Anthropic()
+            client = inference.make_client()
         resp = client.messages.parse(
             model=JUDGE_MODEL,
             max_tokens=512,

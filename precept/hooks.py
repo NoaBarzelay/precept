@@ -6,13 +6,24 @@ enforces nothing.)
 
 from __future__ import annotations
 
+import os
 import sys
 
 from .adapters import claude_code as cc
 from . import enforce
 
 
+def _inference_subprocess() -> bool:
+    """True when we are the nested `claude -p` that Precept's own CLI-inference path spawned
+    (inference.CLI_SUBPROCESS_ENV). Every hook entrypoint no-ops under it, so a flow's
+    inference call can never re-trigger Precept's hooks recursively. Belt-and-suspenders on
+    top of the CLI adapter's `--setting-sources project` (which already skips user hooks)."""
+    return bool(os.environ.get("PRECEPT_INFERENCE_SUBPROCESS"))
+
+
 def pretooluse_main() -> int:
+    if _inference_subprocess():
+        return 0
     try:
         cc.emit(enforce.evaluate_pretooluse(cc.read_event()))
     except Exception:
@@ -21,6 +32,8 @@ def pretooluse_main() -> int:
 
 
 def stop_main() -> int:
+    if _inference_subprocess():
+        return 0
     try:
         event = cc.read_event()
         out = enforce.evaluate_stop(event)
@@ -41,6 +54,8 @@ def sessionstart_main() -> int:
       - slice 2: a bounded RETRIEVAL of relevant vault KNOWLEDGE for the session's opening
         context (derived from the last user turn in the transcript, when available).
     Both are FAIL-OPEN; nothing to surface -> emit nothing."""
+    if _inference_subprocess():
+        return 0
     try:
         event = cc.read_event()
         parts = [
@@ -58,6 +73,8 @@ def sessionstart_main() -> int:
 
 
 def userpromptsubmit_main() -> int:
+    if _inference_subprocess():
+        return 0
     try:
         cc.emit(enforce.evaluate_userpromptsubmit(cc.read_event()))
     except Exception:
@@ -67,6 +84,8 @@ def userpromptsubmit_main() -> int:
 
 def detect_main() -> int:
     """SessionEnd entrypoint: kick DETECT off, detached, and return immediately."""
+    if _inference_subprocess():
+        return 0
     try:
         _spawn_detect(cc.read_event())
     except Exception:
