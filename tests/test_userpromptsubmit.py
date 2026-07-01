@@ -53,6 +53,35 @@ def test_scope_filter_on_prompt_rule():
     ) == {}
 
 
+_CONTEXT_FP = {
+    "id": "fp", "lesson_id": "explain-first-principles", "enforcement_tier": "soft",
+    "hook_event": "UserPromptSubmit", "check_kind": "single_call", "decision": "context",
+    "message": "Explain from first principles: define every term before using it.",
+    "match": {"tool": "UserPromptSubmit", "conditions": [
+        {"field": "prompt", "op": "regex", "value": "(?i)\\bexplain\\b"}]},
+}
+
+
+def test_context_rule_injects_message_on_match():
+    out = enforce.evaluate_userpromptsubmit({"prompt": "explain how hooks work"}, [_CONTEXT_FP])
+    assert out.get("decision") != "block"
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "first principles" in ctx
+
+
+def test_context_rule_silent_when_no_match():
+    # a prompt with no explanation keyword injects nothing -> plain allow.
+    assert enforce.evaluate_userpromptsubmit({"prompt": "run the tests"}, [_CONTEXT_FP]) == {}
+
+
+def test_block_wins_over_context_injection():
+    # a matching deny rule still blocks even when a context rule also matched.
+    out = enforce.evaluate_userpromptsubmit(
+        {"prompt": "explain the bug"}, [_CONTEXT_FP, _TICKET]
+    )
+    assert out["decision"] == "block"
+
+
 def test_judgment_prompt_rule_uses_verdict_fn():
     blocked = enforce.evaluate_userpromptsubmit(
         {"prompt": "deploy it"}, [_JUDGE], verdict_fn=lambda q, c: {"pj": {"ok": False, "reason": "no env"}}

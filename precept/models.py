@@ -97,6 +97,7 @@ class Decision(str, Enum):
     DENY = "deny"
     ASK = "ask"
     REWRITE = "rewrite"
+    CONTEXT = "context"  # UserPromptSubmit: inject `message` as prompt context, never block
 
 
 class Scope(str, Enum):
@@ -239,6 +240,13 @@ class Policy(BaseModel):
             raise ValueError("JUDGMENT policy requires a `judgment_prompt`")
         if self.decision == Decision.REWRITE and not self.rewrite_to:
             raise ValueError("REWRITE decision requires `rewrite_to`")
+        # CONTEXT (prompt-time injection) is only wired for UserPromptSubmit single_call
+        # rules; enforce.py handles it nowhere else, so reject it elsewhere as a mis-author.
+        if self.decision == Decision.CONTEXT and (
+            self.hook_event != HookEvent.USER_PROMPT_SUBMIT
+            or self.check_kind != CheckKind.SINGLE_CALL
+        ):
+            raise ValueError("CONTEXT decision is only valid for UserPromptSubmit single_call rules")
         # Honesty (item 0): applies_when is only meaningful as a JUDGMENT relevance gate.
         if self.applies_when is not None and self.check_kind != CheckKind.JUDGMENT:
             raise ValueError("applies_when is only meaningful on JUDGMENT policies")

@@ -408,11 +408,20 @@ def evaluate_userpromptsubmit(
     ]
 
     synthetic_input = {"prompt": prompt}
-    # 1. Deterministic single_call rules over the prompt text (these can BLOCK).
+    # 1. Deterministic single_call rules over the prompt text. Default action on a match is
+    # BLOCK; a rule with decision "context" instead COLLECTS its `message` as injection text
+    # (a non-blocking prompt-time steer surfaced with the retrieval context in step 3). A
+    # later block (step 2) still wins and discards the collected text — inject never gates.
+    injected: list[str] = []
     for p in ups:
         if p.get("check_kind") == "single_call" and _matches(
             p.get("match"), "UserPromptSubmit", synthetic_input
         ):
+            if p.get("decision") == "context":
+                msg = p.get("message")
+                if msg:
+                    injected.append(msg)
+                continue
             return cc.userpromptsubmit_block(
                 p.get("message") or "Blocked by a Precept prompt rule."
             )
@@ -441,7 +450,9 @@ def evaluate_userpromptsubmit(
     # and (b) relevant retrieval_only CONVENTIONS (P1, activity-keyed by prompt + cwd) as
     # additionalContext so the prompt proceeds already grounded. Cheap/bounded + FAIL-OPEN
     # (no vault/index/catalog or any error => inject nothing, exactly the prior allow shape).
-    parts = [c for c in (_knowledge_retrieval(prompt), _convention_retrieval(prompt, cwd)) if c]
+    parts = injected + [
+        c for c in (_knowledge_retrieval(prompt), _convention_retrieval(prompt, cwd)) if c
+    ]
     if parts:
         return cc.userpromptsubmit_context("\n\n".join(parts))
     return cc.userpromptsubmit_allow()

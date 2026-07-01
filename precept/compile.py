@@ -22,7 +22,9 @@ def _runtime_policies(lesson: Lesson) -> list[dict[str, Any]]:
         return []
     out: list[dict[str, Any]] = []
     for p in lesson.policies:
-        if p.enforcement_tier != EnforcementTier.HARD:
+        # HARD hook policies block; a CONTEXT policy is a non-blocking prompt-time injector
+        # (SOFT by nature) but still lives in the hook cache so enforce.py can surface it.
+        if p.enforcement_tier != EnforcementTier.HARD and p.decision != Decision.CONTEXT:
             continue
         if p.permission_rule:  # routed to settings.json, not the hook cache (item B)
             continue
