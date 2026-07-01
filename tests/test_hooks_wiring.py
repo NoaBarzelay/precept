@@ -44,6 +44,34 @@ def test_pretooluse_main_fail_open_on_bad_stdin(isolated, monkeypatch):
     assert hooks.pretooluse_main() == 0  # never raises
 
 
+def test_stop_main_does_not_spawn_detect(isolated, monkeypatch):
+    # A1/A2: DETECT must NOT run on every turn end (it spends subscription quota).
+    calls = []
+    monkeypatch.setattr(hooks, "_spawn_detect", lambda event: calls.append(event))
+    _feed_stdin(monkeypatch, {"hook_event_name": "Stop"})
+    assert hooks.stop_main() == 0
+    assert calls == []
+
+
+def test_sessionend_spawns_detect(isolated, monkeypatch):
+    # DETECT runs once per session, at SessionEnd.
+    calls = []
+    monkeypatch.setattr(hooks, "_spawn_detect", lambda event: calls.append(event))
+    _feed_stdin(monkeypatch, {"hook_event_name": "SessionEnd", "transcript_path": "/t.jsonl"})
+    assert hooks.detect_main() == 0
+    assert len(calls) == 1
+
+
+def test_spawn_detect_disabled_by_env(isolated, monkeypatch):
+    # PRECEPT_DISABLE_DETECT turns the learning loop off entirely (enforce-only mode).
+    import subprocess
+    popen_calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: popen_calls.append(a))
+    monkeypatch.setenv("PRECEPT_DISABLE_DETECT", "1")
+    hooks._spawn_detect({"transcript_path": "/t.jsonl", "session_id": "S"})
+    assert popen_calls == []
+
+
 def test_sessionstart_main_surfaces_health_reminder(isolated, monkeypatch, capsys):
     stale = isolated / "stale.md"
     stale.write_text("x", encoding="utf-8")

@@ -52,7 +52,10 @@ def stop_main() -> int:
         if not out:
             out = _review_injection(cc.stop_context)
         cc.emit(out)
-        _spawn_detect(event)  # also kick DETECT off the Stop event, detached
+        # DETECT is deliberately NOT spawned here. Running an LLM classification on every
+        # turn end spends subscription quota and loads the machine (this was the top cost
+        # sink). It now runs once per session at SessionEnd (detect_main) instead. Set
+        # PRECEPT_DISABLE_DETECT=1 to turn the learning loop off entirely (enforce-only).
     except Exception:
         pass  # fail open
     return 0
@@ -185,10 +188,13 @@ def _sessionstart_health() -> str | None:
 def _spawn_detect(event: dict) -> None:
     """Fire-and-forget: run DETECT (an LLM call) in a detached process so the hook
     never blocks the user's session on classification. Threads the session_id through
-    (item 1) so DETECT keys its per-session cursor + lock by the real session."""
+    (item 1) so DETECT keys its per-session cursor + lock by the real session.
+    Skipped entirely when PRECEPT_DISABLE_DETECT is set (enforcement-only mode)."""
     import subprocess
     import sys
 
+    if os.environ.get("PRECEPT_DISABLE_DETECT"):
+        return
     tp = event.get("transcript_path")
     if not tp:
         return
