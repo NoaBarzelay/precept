@@ -4,6 +4,10 @@ Some agent behaviors should be left to the model's judgment. Others should never
 
 *The strongest thing here is not the enforcement, it is how it is measured: a deterministic confusion matrix over a committed golden set, plus a live before/after reported as a paired delta with a 95% CI, because agentic-eval infra noise alone swings scores by several points. Both are below.*
 
+Built with Claude Code, on itself. The architecture, the HARD/SOFT tier split, the fail-open judgment gate, and the eval methodology are the design, and the design is mine; the model was a fast implementer. That the author can say precisely which parts were the model's and which were the design is itself the signal.
+
+**Reading this repo:** engineering decisions and their reasons are in [`DECISIONS.md`](DECISIONS.md); the planned direction is in [`ROADMAP.md`](ROADMAP.md); the proof is the deterministic scorecard below plus `pytest` (250 hermetic, fully offline tests); the enforcement core is [`precept/enforce.py`](precept/enforce.py).
+
 <!-- demo.gif to be recorded: correct the agent once, next session is blocked -->
 
 Correct the agent once ("run the tests before you say it works"). A later session is blocked from claiming success until the tests actually ran.
@@ -153,7 +157,7 @@ The learning loop (DETECT, COMPILE, judgment verdicts) needs a model, and there 
 
 Early, but the core loop is real and tested: correct, detect, keep, block, with 250 hermetic tests and a CI-gated deterministic eval. The three shipped artifacts work end to end; the other six are designed and sequenced.
 
-Built with Claude Code. A tool that governs an AI agent, built using that agent, where the architecture, the decisions, and the eval methodology are mine. That the author can say precisely which parts the model did and which parts are the design is itself the signal.
+The full planned direction, the ReDoS and compile-fidelity hardening, the live paired-eval wiring, semantic recall behind a Recall@k gate, and the remaining six artifact types, is in [`ROADMAP.md`](ROADMAP.md).
 
 ## License
 

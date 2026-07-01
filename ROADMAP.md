@@ -1,0 +1,38 @@
+# Roadmap
+
+What is shipped is in the README (the three artifact types, the deterministic eval, the enforcement core). This is the planned direction, with the reason for each item and its current state. It is ordered by what deepens the core thesis, not by what is easiest.
+
+## Near-term hardening
+
+- **ReDoS guard on model-generated matchers.** `enforce.py` already refuses to run model-authored logic as code and caps pattern length, but Python's `re` has no timeout, so a catastrophic-backtracking pattern could still stall an enforcement hook. This is the same threat class as the recursion guard already in place: model output must never be able to harm the machine. Plan: reject nested-quantifier constructs at COMPILE and match under a hard time bound (or a linear-time engine). *Planned.*
+- **A COMPILE-fidelity eval.** The deterministic eval proves the enforcement engine is correct over hand-written policies. It does not yet prove that the matcher the model *generates* from a correction faithfully captures the intent, a too-broad pattern can pass the validator and over-block. Plan: a per-lesson eval that checks the generated policy blocks the violating call and allows a held-out compliant one. This closes the gap between "engine correct" and "compiler correct." *Planned.*
+- **Publish the cost model.** The token meter (`precept tokens`) is built; the numbers are not yet surfaced. Plan: report measured per-flow token and latency cost (DETECT, judgment verdict) and the relevance-gate skip rate in `DECISIONS.md`, so "a model call per turn" is a measurement, not a worry. *Instrument built, reporting pending.*
+
+## Coverage and measurement
+
+- **Wire the paired live eval (Tier 2) to real sessions.** The paired, CI-aware harness that reports corrected-behavior delta with a 95% CI is built (`evals/live.py`); connecting it to live agent runs and publishing the delta with its error bars is the next step. The deterministic Tier-1 number stays the headline until then. *Harness built, live wiring pending.*
+- **In-the-wild false-block capture.** Log every HARD block and let the user flag a wrong one, so precision and coverage become self-collecting signals rather than an assertion. *Planned.*
+
+## Retrieval
+
+- **Earn semantic recall with a number.** Knowledge retrieval is keyword-first (FTS5/BM25). Vector embeddings are deferred behind a condition, not skipped: add sqlite-vec only if a Recall@k eval shows keyword search actually misses on these terse, jargon-dense cards (the regime where single-vector embeddings often underperform keyword). *Gated on an unrun eval, deliberately.*
+- **Close the one conformance gap.** Global conventions currently load always-on rather than just-in-time; the fix is activity-keyed retrieval through the existing knowledge seam, bringing retrieval in line with the finite-context guidance. *Planned, documented in `docs/ANTHROPIC-CONFORMANCE.md`.*
+
+## The remaining artifact types (6 of 9)
+
+Three artifact types are shipped (Rule, Knowledge note, Convention). The other six ride the same `Lesson` spine and the same keep/veto gate, and differ only in their COMMIT target, so each is a bounded addition rather than a new system:
+
+| Type | Compiles to | State |
+|------|-------------|-------|
+| Skill | `.claude/skills/<name>/SKILL.md` | designed |
+| Agent persona | `.claude/agents/<name>.md` (HARD tool-scope + SOFT prompt) | designed |
+| Output style | `.claude/output-styles/<name>.md` | designed |
+| Slash command | `.claude/commands` / `.claude/skills` | designed |
+| MCP / tool config | `.mcp.json` / `mcpServers` | designed |
+| Permission profile | `settings.json` `permissions` | partial (import + clean-ban write-back) |
+
+Order is set by the catalog itself: whichever correction type shows up most in real usage is built next. The catalog is the demand signal.
+
+## Portability (host-drift)
+
+Precept targets Claude Code's hook and settings contract today, behind an adapter (`adapters/`). The contract can change, and other agent hosts are starting to expose enforcement surfaces. Plan: keep the catalog and the HARD/SOFT model host-agnostic, and let the adapter compile the same lessons to other hosts as they expose deny/gate mechanisms. The typed catalog is the durable asset; the compile target is swappable.
