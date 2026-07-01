@@ -8,6 +8,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Lock the suite offline: the tests and eval are fully deterministic and must never
+    # reach a live model. An empty key forces the inference layer down its offline path.
+    env:
+      ANTHROPIC_API_KEY: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
