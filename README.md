@@ -123,6 +123,13 @@ The claim is bounded: of the violations it has a rule for, it blocks all of them
 
 A self-audit against Anthropic's published guidance for creating, retrieving, and configuring agent rules is in `docs/ANTHROPIC-CONFORMANCE.md`. It records strong conformance on configuration and creation, and one open gap on retrieval (global conventions load always-on rather than just-in-time), which is roadmapped.
 
+## Security model
+
+- **Footprint.** `precept install` registers five hooks in `~/.claude/settings.json` (PreToolUse, Stop, UserPromptSubmit, SessionStart, SessionEnd), each pointing at a `precept-hook-*` command. settings.json is backed up before every edit, and `precept uninstall` removes exactly those entries. State lives in `~/.precept` (the catalog) and `~/.local/state/precept` (the cache); both are local, and nothing is written to a synced folder.
+- **Data egress.** The enforcement hooks are local stdlib checks and send nothing off the machine. The learning loop (DETECT, judgment verdicts) sends transcript excerpts and prompt text to the model for classification, through the local `claude` CLI on the subscription backend or the Anthropic API with a key, the same data path as any Claude Code turn. `PRECEPT_DISABLE_DETECT=1` disables the loop entirely and leaves enforcement running.
+- **Model-authored logic never executes.** Matchers are data interpreted by a fixed stdlib engine: no `eval`, no `exec`, and regex is length-capped and fails safe. Nested inference is guarded by the `PRECEPT_SUBPROCESS` sentinel against recursion.
+- **Review boundary.** Nothing is enforced until the user runs `precept keep`. Rules are readable markdown the user can inspect, edit, or delete at any time.
+
 ## Installation
 
 ```bash
