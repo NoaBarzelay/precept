@@ -8,9 +8,9 @@ I work inside Claude Code all day, and every session produces things worth keepi
 
 I built Precept to capture how I work with an agent, and the data that work operates on, as a durable, typed catalog that improves itself. It has three pillars:
 
-- **Processes** — the ways I work, captured as typed entities I define (rules, conventions, skills, agent personas, and more).
-- **Data** — the knowledge and data those processes act on, catalogued for recall and reuse.
-- **Self-improving** — a loop that learns from my sessions and proposes refinements to both, for my review.
+- **Processes**: the ways I work, captured as typed entities I define (rules, conventions, skills, agent personas, and more).
+- **Data**: the knowledge and data those processes act on, catalogued for recall and reuse.
+- **Self-improving**: a loop that learns from my sessions and proposes refinements to both, for my review.
 
 Deterministic enforcement is one capability inside it, the sharp edge for the few entities that must never break, not the headline.
 
