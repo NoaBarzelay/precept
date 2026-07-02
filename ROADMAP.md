@@ -1,6 +1,6 @@
 # Roadmap
 
-What is shipped is in the README (the three artifact types, the deterministic eval, the enforcement core). This is the planned direction, with the reason for each item and its current state. It is ordered by what deepens the core thesis, not by what is easiest.
+What is shipped is in the README (the three entity types, the deterministic eval, the enforcement core). This is the planned direction, with the reason for each item and its current state. It is ordered by what deepens the core thesis, not by what is easiest.
 
 ## Near-term hardening
 
@@ -18,9 +18,9 @@ What is shipped is in the README (the three artifact types, the deterministic ev
 - **Earn semantic recall with a number.** Knowledge retrieval is keyword-first (FTS5/BM25). Vector embeddings are deferred behind a condition, not skipped: add sqlite-vec only if a Recall@k eval shows keyword search actually misses on these terse, jargon-dense cards (the regime where single-vector embeddings often underperform keyword). *Gated on an unrun eval, deliberately.*
 - **Close the one conformance gap.** Global conventions currently load always-on rather than just-in-time; the fix is activity-keyed retrieval through the existing knowledge seam, bringing retrieval in line with the finite-context guidance. *Planned, documented in `docs/ANTHROPIC-CONFORMANCE.md`.*
 
-## The remaining artifact types (6 of 9)
+## The remaining entity types (6 of 9)
 
-Three artifact types are shipped (Rule, Knowledge note, Convention). The other six ride the same `Lesson` spine and the same keep/veto gate, and differ only in their COMMIT target, so each is a bounded addition rather than a new system:
+Three entity types are shipped (Rule, Knowledge note, Convention). The other six ride the same `Lesson` spine and the same keep/veto gate, and differ only in their COMMIT target, so each is a bounded addition rather than a new system:
 
 | Type | Compiles to | State |
 |------|-------------|-------|

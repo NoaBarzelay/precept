@@ -1,5 +1,9 @@
 # Precept
 
+**Status:** living document · **Owner:** Noa Barzelay · **Last updated:** 2026-07-02
+
+## Summary
+
 Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction, with background learning planned.
 
 ## Problem
@@ -51,7 +55,7 @@ session transcript
    runtime   hooks read the cache and enforce (HARD) or inject context (SOFT); stdlib only, fail-OPEN
 ```
 
-## Requirements
+## Functional requirements
 
 Status: **built** (implemented and tested), **partial** (subset implemented), **designed** (specified, not implemented), **planned** (roadmapped).
 
@@ -93,16 +97,24 @@ Status: **built** (implemented and tested), **partial** (subset implemented), **
 | R3.3 | Governance keeps the catalog current: decay, supersede, conflict detection | built |
 | R3.4 | Background learning drafts proposals from external best practices | planned |
 
-### R4: Enforcement and safety
+### R4: Enforcement
 
 | # | Requirement | Status |
 |---|-------------|--------|
 | R4.1 | Invariant entities compile to deterministic enforcement (hooks, permission rules, subagent tool-scoping) | built |
-| R4.2 | An entity cannot claim enforcement it cannot deliver; the boundary is validated in the type system | built |
-| R4.3 | Judgment invariants run a model verdict at a deterministic gate and fail open | built |
-| R4.4 | Model-authored logic executes only as data; regex is ReDoS-guarded at compile and runtime | built |
-| R4.5 | The enforcement runtime is stdlib-only, makes no model call, and fails open | built |
-| R4.6 | All writes to `~/.claude` are atomic, backed up, and exactly reversible on uninstall | built |
+| R4.2 | Invariants with no mechanical check run a model verdict at a deterministic gate | built |
+
+## Non-functional requirements
+
+| # | Quality | Requirement | Status |
+|---|---------|-------------|--------|
+| N1 | Reliability | The runtime fails open: no error, missing key, or unreadable cache ever blocks a session | built |
+| N2 | Performance | The enforcement hot path is stdlib-only: no model call, no network | built |
+| N3 | Security | Model-authored logic executes only as data; regex is ReDoS-guarded at compile and runtime; nested inference is recursion-guarded | built |
+| N4 | Integrity | An entity cannot claim enforcement it cannot deliver; the HARD/SOFT boundary is validated in the type system | built |
+| N5 | Reversibility | All writes to `~/.claude` are atomic, backed up, and exactly inverse on uninstall | built |
+| N6 | Testability | The model client is injectable at every seam; the full suite runs offline and hermetic | built |
+| N7 | Privacy | Local-first: enforcement sends nothing off the machine; the learning loop is disabled by one env var | built |
 
 ## Measurement
 
