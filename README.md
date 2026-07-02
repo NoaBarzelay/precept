@@ -1,170 +1,142 @@
 # Precept
 
-Precept is a personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from your sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction, with background learning planned.
+Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction, with background learning planned.
 
-## Three pillars
+## Overview
 
-- **Processes.** The ways you work with an agent, captured as typed entities that Precept defines: rules, conventions (`CLAUDE.md` and rules files), skills, agent personas, output styles, slash commands, MCP config, permission profiles. Some carry a HARD, enforced edge (rules, agent personas, permission profiles); the rest steer.
-- **Data.** The knowledge and data those processes act on, catalogued for recall and reuse. A richer typed catalog is the planned upgrade.
-- **Self-improving.** A detect, review, compile loop drafts and refines these entities from how you work, and always proposes them for review rather than applying them silently. A planned extension also drafts from its own reading of best practices.
+I work inside Claude Code all day, and every session produces things worth keeping: corrections, preferences, procedures, and the facts my work is about. Left in chat they evaporate. Piled into one memory file they go unread and get followed inconsistently.
 
-## Why
+I built Precept to capture how I work with an agent, and the data that work operates on, as a durable, typed catalog that improves itself. It has three pillars:
 
-Working with an agent produces a stream of corrections, preferences, and procedures worth keeping: how you want it to work, what it should and should not do, the facts and entities it operates on. Left in chat they evaporate; written into a single memory file they accrete unread and are followed inconsistently. Precept captures each one as a typed, reviewable artifact, routes it to the right home (a rule, a skill, an agent persona, a knowledge note), and keeps the catalog small and current.
+- **Processes** — the ways I work, captured as typed entities I define (rules, conventions, skills, agent personas, and more).
+- **Data** — the knowledge and data those processes act on, catalogued for recall and reuse.
+- **Self-improving** — a loop that learns from my sessions and proposes refinements to both, for my review.
 
-For the subset of processes that are invariants rather than preferences ("never run `npm`", "run the tests before claiming success"), steering is not enough. Claude Code exposes two configuration layers: context (`CLAUDE.md`, skills, rules files), which the model follows at its discretion, and deterministic (hooks, permission rules, subagent tool-scoping), which Claude Code executes outside the model's control. Precept compiles the checkable invariants into the deterministic layer so they block rather than nudge, and enforces the boundary between the two tiers in the type system rather than asserting it in prose.
+Deterministic enforcement is one capability inside it, the sharp edge for the few entities that must never break, not the headline.
 
-## Concepts
+## Who it is for
 
-- **Lesson**: one correction captured as auditable data, stored as a markdown card. The source of truth.
-- **Policy**: a typed enforcement unit compiled from a Lesson. One Lesson compiles to zero or more Policies.
-- **Tier**: every artifact is HARD or SOFT. HARD blocks; SOFT steers. The tier is validated when the Policy is constructed.
-- **Artifact type**: the kind of entity a Lesson compiles to (a rule, a knowledge note, a skill, and so on). "Artifact" and "entity" refer to the same defined objects. Nine types are defined; three are implemented (see Artifact types).
+One user: me, a heavy Claude Code user with a specific, evolving way of working. Precept is published as the setup I actually run, not as a product for others to adopt. The design assumes a single trusted operator who reviews everything it proposes.
 
-## Pipeline
+## Goals
 
-The self-improving loop authors artifacts from how you work. It produces every artifact type; enforcement is the runtime step that applies only to the hard ones.
+1. **Keep my agent aligned to how I work.** My established ways of working carry across sessions, so I stop making the same correction twice.
+2. **Catalog my processes and data so nothing evaporates.** Ephemeral corrections and knowledge become a durable, reusable, current catalog.
+3. **Improve continuously with little effort.** The system learns from my sessions and proposes refinements; I review rather than author from scratch.
+
+## Non-goals
+
+- **Not a general product.** It is my personal setup, published. I am not building for adoption, packaging, or multi-user use.
+- **Not a replacement for Claude Code's native memory.** It complements native memory with a typed, reviewable, cross-tool catalog.
+- **Not "enforce everything."** Most entities steer; only the true invariants are hard-enforced. Over-enforcing trains me to turn the tool off.
+- **Never silent.** Nothing enters the catalog or takes effect until I approve it.
+
+## How it works
+
+### Processes: the entities I define
+
+Every way I work is captured as a typed entity with a specific home, so a correction lands as the right kind of artifact instead of one more line in a memory file. A router picks the home by the shape of the correction. Nine entity types are defined; three are built:
+
+| # | Entity | Home | Tier | Status |
+|---|--------|------|------|--------|
+| 1 | Rule | hooks (PreToolUse / Stop / UserPromptSubmit) + `permissions.deny` | HARD | built |
+| 2 | Knowledge note | Precept-native FTS5/BM25 index (this is the Data pillar) | SOFT | built |
+| 3 | Convention | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | SOFT | built |
+| 4 | Skill | `.claude/skills/<name>/SKILL.md` | SOFT | designed |
+| 5 | Agent persona | `.claude/agents/<name>.md` | HARD tools + SOFT prompt | designed |
+| 6 | Output style | `.claude/output-styles/<name>.md` | SOFT | designed |
+| 7 | Slash command | `.claude/commands` or `.claude/skills` | SOFT | designed |
+| 8 | MCP / tool config | `.mcp.json` / `mcpServers` | config | designed |
+| 9 | Permission profile | `settings.json` `permissions` | HARD | partial (import + clean-ban) |
+
+The six designed types ride the same authoring loop and review gate and differ only in where they are written.
+
+### Data: the catalog
+
+The knowledge note (type 2) is the first pillar-2 entity: the facts, context, and references my work is about, stored in a local FTS5/BM25 index and surfaced by relevance when a session needs them. The planned upgrade is a richer typed catalog of the entities my work operates on (projects, domains, people), so the data is structured and reusable rather than freeform.
+
+### Self-improving: the loop
+
+A detect, review, compile loop authors and refines these entities from how I actually work. It always proposes for my review and never applies anything silently. Today it learns from my sessions (explicit direction); drafting from its own reading of best practices is a planned extension.
 
 ```
 session transcript
       |  Stop / SessionEnd hook (fire-and-forget, fail-CLOSED)
       v
-   DETECT   Haiku structured extraction -> MaybeLesson.
-            Reads only genuine user-typed turns (provenance gate); abstains by default.
+   DETECT   a small model extracts a candidate lesson from genuine user-typed turns; abstains by default.
       v
-   COMPILE  Lesson -> 1..N typed Policy (Cedar-style precedence).
-            Determinism is earned here: a structured matcher that passes a typed
-            validator, or the Lesson stays soft. The model does not assert enforceability.
+   COMPILE  the lesson becomes one or more typed entities. Determinism is earned here: an entity
+            only becomes hard-enforcing if it compiles to a matcher that passes a typed validator.
       v
-   REVIEW   `precept keep` / `precept delete`. Human gate; nothing enforces until kept.
-            PENDING -> ACTIVE.
+   REVIEW   `precept keep` / `precept delete`. Nothing takes effect until I keep it.
       v
-   COMMIT   markdown card is the source of truth (plain text, diffable, sync-safe);
-            compiled policies.json is the disposable cache, rebuildable from cards.
-      v
-   ENFORCE  PreToolUse / Stop / UserPromptSubmit hooks read the JSON cache.
-            Stdlib only, no model call, fast.
+   COMMIT   the entity is a markdown card (the source of truth, diffable, sync-safe); the compiled
+            cache is disposable and rebuildable from the cards.
 ```
 
-DETECT fails closed (abstains rather than guess a false Lesson). ENFORCE fails open (a missing key, an unreadable cache, or an unrecognized transcript shape never blocks a session). Detection is conservative about what it learns; enforcement is conservative about what it breaks.
+DETECT fails closed (it abstains rather than guess). Runtime fails open (a missing key or unreadable cache never blocks a session). It is conservative about what it learns and conservative about what it breaks.
 
-## Enforcement model
+### Enforcement: one capability
 
-Enforcement is one capability of the platform: the HARD, enforced edge on the process entities Precept defines. Every entity is labeled HARD or SOFT, and enforcement is claimed only for the HARD tier.
+Most entities steer. The few that are true invariants ("never run `npm`", "run the tests before claiming success") need more than steering, because Claude Code delivers context (`CLAUDE.md`, skills, rules files) to the model as suggestions it follows at its discretion. Only hooks, permission rules, and subagent tool-scoping run outside the model's control. Precept compiles the invariant entities into that deterministic layer so they block rather than nudge.
 
-- **HARD** is three mechanisms Claude Code runs without the model's cooperation: hooks (PreToolUse deny, Stop block, UserPromptSubmit block), the `permissions` `deny` array in `settings.json`, and subagent tool-scoping.
-- **SOFT** is everything delivered as context: knowledge notes, conventions, skills, output styles. Precept writes the artifact correctly and atomically; it does not claim the model will obey it.
+The honest part is enforced in code, not asserted: an entity is labeled HARD or SOFT, and a validator rejects any HARD entity attached to an event that cannot actually block. So an entity can never claim enforcement it cannot deliver. Invariants that need a judgment ("no stub code") run a deterministic gate with a cheap model verdict, and fail open, a missing key can cost a catch but never wedges a session.
 
-The boundary is encoded in the type system. `Policy._shape_matches_kind` in `models.py` rejects a HARD tier attached to an event that cannot block:
+## How I measure it
 
-```python
-if self.enforcement_tier is Tier.HARD and self.hook_event not in BLOCKABLE_EVENTS:
-    raise ValueError(
-        f"HARD tier requires a blockable event; {self.hook_event} cannot deny a call"
-    )
-```
+The enforcement capability is the part I can measure rigorously, so I do, in two tiers that answer different questions.
 
-A Policy that claims enforcement it cannot deliver fails to construct.
-
-### Rule shapes
-
-- **single-call**: a condition over one tool call ("never `npm`") compiles to a PreToolUse deny, or to a `rewrite` that swaps the field to the corrected value.
-- **trajectory**: a condition over the session ("tests must run before claiming success") compiles to a Stop hook that blocks finishing when the required call never happened.
-
-### Judgment rules
-
-A correction with no mechanical check ("do not leave stub code") uses a deterministic gate with a model verdict. The Stop hook fires every turn (timing and triggering are deterministic). At that gate, a Haiku call returns a structured `{ok, reason}`. Three properties bound this:
-
-- The verdict prompt is stored on the card, so the judgment is auditable.
-- A relevance gate skips the model call on turns where the rule cannot apply (a code-quality rule runs only when code was edited).
-- The verdict path is lazy-loaded and fails open: a missing key or a model error never blocks a session.
-
-## Artifact types
-
-Nine types are defined, and the self-improving loop authors them. Types 1 and 3 through 9 are process entities (how you work); type 2 populates the data catalog. Three types are implemented; the other six ride the same Lesson spine and keep/veto gate and differ only in their COMMIT target.
-
-| # | Type | Tier | Compiles to | Status |
-|---|------|------|-------------|--------|
-| 1 | Rule | HARD | hooks (PreToolUse / Stop / UserPromptSubmit) + `permissions.deny` | implemented |
-| 2 | Knowledge note | SOFT (recall) | Precept-native FTS5/BM25 index, injected on relevance | implemented |
-| 3 | Convention (rules-file) | SOFT | Precept-owned `.claude/rules/*.md` (global / repo / path-scoped) | implemented |
-| 4 | Skill | SOFT | `.claude/skills/<name>/SKILL.md` | designed |
-| 5 | Agent persona | HARD (tools) + SOFT (prompt) | `.claude/agents/<name>.md` | designed |
-| 6 | Output style | SOFT | `.claude/output-styles/<name>.md` | designed |
-| 7 | Slash command | SOFT | `.claude/commands` or `.claude/skills` | designed |
-| 8 | MCP / tool config | config | `.mcp.json` / `mcpServers` | designed |
-| 9 | Permission profile | HARD | `settings.json` `permissions` | partial (import + clean-ban write-back) |
-
-## Evaluation
-
-Two evaluation tiers measure different properties.
-
-**Tier 1: deterministic confusion matrix.** `precept evals` runs the enforcement matcher over a committed golden set of 25 cases (each carries its compiled policies, a tool call or inline Stop transcript, and the expected decision) and tallies TP/FP/TN/FN. No model call, no variance, CI-gateable with `--strict`.
+**Deterministic scorecard.** `precept evals` runs the real enforcement engine over a committed golden set of 25 cases and tallies the confusion matrix. No model call, no variance, CI-gateable.
 
 ```
                  predicted block   predicted allow
 actual violation      TP = 10          FN = 0
 actual compliant      FP = 0           TN = 15
 
-recall (violations caught):     100%   (10/10)
-false-block rate (compliant):     0%   (0/15)
+recall 100% (10/10)   false-block rate 0% (0/15)
 ```
 
-The claim is bounded: of the violations it has a rule for, it blocks all of them, and it blocks no compliant calls. Recall is measured over the deterministic subset, not over all possible mistakes.
+The claim is deliberately bounded: of the violations it has a rule for, it blocks all of them and blocks no compliant call. It does not claim to catch mistakes it has no rule for.
 
-**Tier 2: paired before/after with a confidence interval.** The live corrected-behavior-rate delta (enforcement on vs off) is reported as a paired, multi-trial delta with a 95% CI, not a single number, because agentic-eval infrastructure noise alone shifts scores by several points between identical runs (see Anthropic's "Adding Error Bars to Evals"). `evals/live.py` runs paired trials (same task, seed, machine), computes the mean delta and a 95% half-width, and reports the noise floor. The harness is built; wiring it to live agent runs is pending (see `ROADMAP.md`).
+**Paired behavior delta.** Whether enforcement actually keeps my agent aligned (goal 1) is a live, noisy measurement, so it is reported as a paired before/after with a 95% confidence interval, not a single number, because agentic-eval infrastructure noise alone swings scores by several points between identical runs. The reporting harness is built; wiring it to live runs is the next step (see `ROADMAP.md`).
 
-## Design principles
+## Status and roadmap
 
-- **Rules are data, never code.** `enforce.py` is a fixed stdlib interpreter over compiled JSON. There is no `eval` or `exec` in the enforcement path. Model-generated regex is length-capped and fails safe on `re.error` (a bad pattern matches nothing; it never crashes the hook).
-- **Local-first, sync-safe.** Markdown cards are the source of truth and are safe in a synced vault. The derived SQLite index and policy cache live on local disk (`~/.local/state/precept`), never a cloud-synced folder, because SQLite corrupts under sync. The cache is disposable and rebuildable from the markdown.
-- **Atomic writes, exact-inverse uninstall.** Every write to `~/.claude` is atomic (temp in the same dir, fsync, `os.replace`, with a `.bak`). Sidecar manifests record what Precept wrote, so uninstall strips only Precept's own entries.
-- **Cedar/OPA-style precedence.** Decision resolution is `deny > ask > rewrite > allow`; no match means allow. Matches OPA, Cedar, and Microsoft's Agent Governance Toolkit.
+The core loop works end to end (correct, detect, review, keep, then enforce or steer), with 250 offline hermetic tests and a CI-gated deterministic eval. Three of the nine entity types are built; the other six are designed and sequenced. Full planned direction, including the data-catalog upgrade and the background-learning extension, is in `ROADMAP.md`. Built with Claude Code.
 
-A self-audit against Anthropic's published guidance for creating, retrieving, and configuring agent rules is in `docs/ANTHROPIC-CONFORMANCE.md`. It records strong conformance on configuration and creation, and one open gap on retrieval (global conventions load always-on rather than just-in-time), which is roadmapped.
+## Under the hood
 
-## Security model
+- **Entities are data, never code.** The enforcement engine is a fixed stdlib interpreter over compiled JSON; no `eval` or `exec`. Model-generated regex is length-capped and fails safe.
+- **Local-first, sync-safe.** Markdown cards are the source of truth and are safe in a synced vault. The derived index and cache live on local disk only, because SQLite corrupts under cloud sync; the cache is disposable and rebuildable.
+- **Atomic, reversible writes.** Every write to `~/.claude` is atomic and backed up; sidecar manifests record exactly what Precept wrote, so uninstall removes only its own entries.
+- **Security.** The enforcement hooks are local checks and send nothing off the machine. The learning loop sends transcript excerpts to the model for classification, the same data path as any Claude Code turn; `PRECEPT_DISABLE_DETECT=1` turns it off. Nothing enforces until I keep it.
 
-- **Footprint.** `precept install` registers five hooks in `~/.claude/settings.json` (PreToolUse, Stop, UserPromptSubmit, SessionStart, SessionEnd), each pointing at a `precept-hook-*` command. settings.json is backed up before every edit, and `precept uninstall` removes exactly those entries. State lives in `~/.precept` (the catalog) and `~/.local/state/precept` (the cache); both are local, and nothing is written to a synced folder.
-- **Data egress.** The enforcement hooks are local stdlib checks and send nothing off the machine. The learning loop (DETECT, judgment verdicts) sends transcript excerpts and prompt text to the model for classification, through the local `claude` CLI on the subscription backend or the Anthropic API with a key, the same data path as any Claude Code turn. `PRECEPT_DISABLE_DETECT=1` disables the loop entirely and leaves enforcement running.
-- **Model-authored logic never executes.** Matchers are data interpreted by a fixed stdlib engine: no `eval`, no `exec`, and regex is length-capped and fails safe. Nested inference is guarded by the `PRECEPT_SUBPROCESS` sentinel against recursion.
-- **Review boundary.** Nothing is enforced until the user runs `precept keep`. Rules are readable markdown the user can inspect, edit, or delete at any time.
+Engineering decisions with their reasons are in `DECISIONS.md`; the self-audit against Anthropic's agent-rules guidance is in `docs/ANTHROPIC-CONFORMANCE.md`.
 
-## Installation
+## Install
 
 ```bash
 git clone https://github.com/NoaBarzelay/precept && cd precept
 uv venv && uv pip install -e ".[dev]"
-pytest -q            # 250 tests, offline and hermetic (model seams are injectable)
+pytest -q            # 250 tests, offline and hermetic
 
 precept install                 # wire hooks into ~/.claude (idempotent, atomic, backed up)
-precept bootstrap               # seed PENDING lessons from existing setup (permission rules, CLAUDE.md)
-precept detect <transcript>     # classify a session; mint a PENDING lesson from a correction
+precept bootstrap               # seed candidate entities from my existing setup
+precept detect <transcript>     # classify a session into a candidate entity
 precept list                    # show the catalog
-precept keep <id>               # human gate: PENDING -> ACTIVE; deterministic lessons auto-compile
-precept evals                   # deterministic scorecard
+precept keep <id>               # the review gate: keep -> active
+precept evals                   # the deterministic scorecard
 precept doctor                  # resolved paths, sync-safety check, hook reachability
 ```
 
-## Requirements
-
-The enforcement engine runs with no model. The learning loop (DETECT, COMPILE, judgment verdicts) requires a model, selected by `PRECEPT_INFERENCE` in `precept/inference.py`:
-
-- Default (`auto`): the Claude subscription through the local `claude` CLI when it is present and no API key is set. Mint a token with `claude setup-token`, export it as `CLAUDE_CODE_OAUTH_TOKEN`.
-- `sdk`: the Anthropic SDK with a billed `ANTHROPIC_API_KEY`.
-
-The client is injected at every seam (a `FakeClient` in the tests), so all 250 tests run offline.
-
-## Status
-
-The core authoring loop is implemented and tested (correct, detect, keep, then enforce or steer), with 250 hermetic tests and a CI-gated deterministic eval. The three implemented artifact types work end to end; the other six are designed. Built with Claude Code.
+The enforcement engine needs no model. The learning loop does, selected by `PRECEPT_INFERENCE`: the Claude subscription through the local `claude` CLI by default, or the Anthropic SDK with an API key. The client is injected at every seam (a fake client in the tests), so all 250 tests run offline.
 
 ## Repository guide
 
 - `DECISIONS.md`: the load-bearing engineering decisions with their reasons.
-- `ROADMAP.md`: planned direction (hardening, coverage, the remaining artifact types).
+- `ROADMAP.md`: planned direction (the data-catalog upgrade, background learning, the remaining entity types, hardening).
+- `docs/ARTIFACTS.md`: the per-entity spec and status tracker.
 - `precept/enforce.py`: the enforcement interpreter.
-- `docs/ANTHROPIC-CONFORMANCE.md`: the self-audit and the one open gap.
 
 ## License
 
