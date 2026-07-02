@@ -23,7 +23,7 @@ For the subset of processes that are invariants rather than preferences ("never 
 
 ## Pipeline
 
-The self-improving loop that turns how you work into artifacts. It always proposes for human review and never acts silently.
+The self-improving loop authors artifacts from how you work. It produces every artifact type; enforcement is the runtime step that applies only to the hard ones.
 
 ```
 session transcript
@@ -120,7 +120,6 @@ The claim is bounded: of the violations it has a rule for, it blocks all of them
 - **Local-first, sync-safe.** Markdown cards are the source of truth and are safe in a synced vault. The derived SQLite index and policy cache live on local disk (`~/.local/state/precept`), never a cloud-synced folder, because SQLite corrupts under sync. The cache is disposable and rebuildable from the markdown.
 - **Atomic writes, exact-inverse uninstall.** Every write to `~/.claude` is atomic (temp in the same dir, fsync, `os.replace`, with a `.bak`). Sidecar manifests record what Precept wrote, so uninstall strips only Precept's own entries.
 - **Cedar/OPA-style precedence.** Decision resolution is `deny > ask > rewrite > allow`; no match means allow. Matches OPA, Cedar, and Microsoft's Agent Governance Toolkit.
-- **Fail-closed detect, fail-open enforce.**
 
 A self-audit against Anthropic's published guidance for creating, retrieving, and configuring agent rules is in `docs/ANTHROPIC-CONFORMANCE.md`. It records strong conformance on configuration and creation, and one open gap on retrieval (global conventions load always-on rather than just-in-time), which is roadmapped.
 
@@ -158,7 +157,7 @@ The client is injected at every seam (a `FakeClient` in the tests), so all 250 t
 
 ## Status
 
-The core loop is implemented and tested (correct, detect, keep, block), with 250 hermetic tests and a CI-gated deterministic eval. The three implemented artifact types work end to end; the other six are designed. Built with Claude Code.
+The core authoring loop is implemented and tested (correct, detect, keep, then enforce or steer), with 250 hermetic tests and a CI-gated deterministic eval. The three implemented artifact types work end to end; the other six are designed. Built with Claude Code.
 
 ## Repository guide
 
