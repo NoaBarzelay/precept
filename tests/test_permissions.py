@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from precept import install, paths
+from precept import install
 
 
 @pytest.fixture

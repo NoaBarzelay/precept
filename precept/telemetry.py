@@ -150,7 +150,7 @@ def compute_scorecard(
         sum(1 for e in edits if e.get("file_path") and mem_re.search(e["file_path"]))
         if mem_re else None
     )
-    skills = Counter()
+    skills: Counter[str] = Counter()
     for e in windowed:
         if (e.get("tool") or "") == "Read":
             fp = e.get("file_path") or ""

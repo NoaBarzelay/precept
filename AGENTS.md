@@ -24,6 +24,7 @@ ruff check precept/ tests/
 - **Writes to `~/.claude` are atomic and reversible.** Temp file in the same directory, fsync, `os.replace`, `.bak` backup, and a sidecar manifest so uninstall stays an exact inverse.
 - **Tests are hermetic.** They must never read the real `~/.claude`, `~/.precept`, or a vault; `tests/conftest.py` isolates state per test. Model clients are injected (`FakeClient`), so the suite runs offline.
 - **Nothing enforces without a keep.** The review gate (`precept keep`) is the trust boundary; never bypass or auto-approve.
+- **The privacy boundary is absolute.** Learned content (catalog cards from `~/.precept`, state, vault content, the user's personal rules/style) must never be committed to this public repository. `tests/test_repo_privacy.py` gates this in CI; never weaken it.
 
 ## Terminology
 

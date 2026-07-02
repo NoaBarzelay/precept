@@ -6,7 +6,7 @@ from precept import catalog
 from precept.models import (
     CheckKind, Condition, Decision, Determinism, EnforcementTier, GroundedSignals,
     HookEvent, Lesson, Match, MatchOp, MaybeLesson, Origin, Policy, Scope,
-    TrajectorySpec, resolve_decisions,
+    resolve_decisions,
 )
 
 

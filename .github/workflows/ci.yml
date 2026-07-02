@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
     # Lock the suite offline: the tests and eval are fully deterministic and must never
     # reach a live model. An empty key forces the inference layer down its offline path.
     env:
@@ -16,10 +19,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: install
         run: pip install -e ".[dev]"
-      - name: tests
+      - name: lint
+        run: ruff check precept/ tests/
+      - name: types
+        run: mypy
+      - name: tests (includes the repo privacy gate)
         run: pytest -q
       - name: enforcement eval (gate — fails on any miss or false-block)
         run: precept evals --strict

@@ -102,6 +102,18 @@ On every guarded tool call and every Stop, Claude Code runs a `precept-hook-*` e
 - **Host adapter** (`adapters/claude_code.py`): the only module that knows the Claude Code hook contract, so a second host is an adapter, not a rewrite.
 - **Local-first split** (`paths.py`): the markdown catalog is the source of truth and is sync-safe; the derived SQLite index and policy cache are local-only because SQLite corrupts under cloud sync.
 
+## Privacy: two planes
+
+The system separates a public code plane from a private data plane, and the boundary is enforced, not asserted:
+
+- **Code plane (this repository, public):** the engine, the docs, and synthetic eval cases. It never contains learned content.
+- **Data plane (local, private):** the user's actual learnings, the catalog cards in `~/.precept` (their rules, style, preferences), the derived state in `~/.local/state/precept`, and any vault. None of it lives in the repository; the data plane can be versioned separately as its own private git repository.
+- **The gate:** `tests/test_repo_privacy.py` runs in CI and fails the build if a populated catalog card, local session config, or personal marker (absolute home paths, phone patterns, vault mounts) is ever tracked. Consistent with the project's own thesis: an invariant should block, not nudge.
+
+## Named patterns
+
+For orientation, the recognizable patterns in play: the enforcement path is a **policy-as-data interpreter** (OPA/Cedar lineage: policies are data evaluated by a fixed engine, never executable); `precept keep` is a **human-in-the-loop approval gate**; the markdown catalog with the compiled `policies.json` is **source of truth plus derived projection**; `adapters/` is a **host adapter** boundary. The DETECT, COMPILE, REVIEW loop corresponds to the Generator, Reflector, Curator roles of agentic context engineering (ACE, [arXiv:2510.04618](https://arxiv.org/abs/2510.04618)), with an added stage ACE does not have: deterministic compilation of the invariant subset into enforcement.
+
 ## Where to start reading
 
 1. `precept/enforce.py`: the runtime, and the clearest statement of what enforcement is.

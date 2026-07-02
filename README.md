@@ -21,7 +21,7 @@ Claude Code is my primary development agent. Working with it produces durable as
 ## Non-goals
 
 - **A general product.** This is my setup, published. No packaging, onboarding, or multi-user support.
-- **A replacement for Claude Code's native memory.** Precept complements it with a typed, reviewable catalog.
+- **A replacement for Claude Code's native memory.** Auto memory remembers; Precept governs. Native memory self-writes freeform notes with no review step and no compliance guarantee. Precept adds what that layer lacks: typed entities, an explicit keep/veto gate, governance (decay, supersede, conflict detection), and compilation of the invariant subset into deterministic enforcement.
 - **Enforce everything.** Most entities steer. Only true invariants are hard-enforced; over-enforcement produces false blocks and gets a tool turned off.
 - **Autonomous action.** Nothing enters the catalog or takes effect without my explicit approval.
 
@@ -115,6 +115,7 @@ Status: **built** (implemented and tested), **partial** (subset implemented), **
 | N5 | Reversibility | All writes to `~/.claude` are atomic, backed up, and exactly inverse on uninstall | built |
 | N6 | Testability | The model client is injectable at every seam; the full suite runs offline and hermetic | built |
 | N7 | Privacy | Local-first: enforcement sends nothing off the machine; the learning loop is disabled by one env var | built |
+| N8 | Privacy boundary | Learned content (the catalog, state, vault) lives outside the repository; a CI test fails the build if any of it is ever tracked | built |
 
 ## Measurement
 

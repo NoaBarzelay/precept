@@ -1,6 +1,8 @@
 """Enforcement-matcher tests — the wedge, exercised end-to-end from policy dicts.
 These use the runtime JSON shape (what COMPILE emits), stdlib-only path."""
 
+import os
+
 from precept import enforce
 
 # NB: word-boundary regex, not a naive substring — "npm install" as a substring
@@ -162,8 +164,6 @@ def test_deterministic_stop_path_imports_no_judge_or_anthropic():
 
 
 # --- Scope-aware enforcement (item C) ---------------------------------------
-import os
-
 _REPO_ROOT = os.path.realpath("/work/myrepo") if os.name != "nt" else "C:\\work\\myrepo"
 REPO_NPM = {
     **PNPM, "id": "repo-npm", "scope": "repo", "scope_value": _REPO_ROOT,

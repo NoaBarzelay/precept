@@ -4,7 +4,6 @@ is exercised with an injected fake count_tokens client, never a live call."""
 
 from __future__ import annotations
 
-import json
 
 import pytest
 

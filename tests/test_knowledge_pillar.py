@@ -297,7 +297,8 @@ def test_correct_lowercase_names_are_not_flagged():
 
 
 def test_import_slug_files_are_left_as_is(tmp_path):
-    v = tmp_path / "vault"; v.mkdir()
+    v = tmp_path / "vault"
+    v.mkdir()
     _write(v, "Career/Startups/playbook-the-ai-kill-chain.md",
            "---\ntype: knowledge\nupdated: 2026-05-28\n---\n# x\n## Sources\n- x\n")
     assert kconv.is_import_slug("playbook-the-ai-kill-chain")

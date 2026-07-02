@@ -3,7 +3,6 @@ without a network call (the Anthropic client is faked)."""
 
 import json
 
-import pytest
 
 from precept import detect
 from precept.models import (

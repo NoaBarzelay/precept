@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from ..safety import connect_db
+from . import frontmatter
 
 # Bound the recall-biased OR query: a free-text prompt can be hundreds of words, and OR-ing
 # them all (especially common ones) unions almost the whole corpus into the BM25 candidate
@@ -47,7 +48,6 @@ def _install_query_ceiling(conn: sqlite3.Connection, budget_s: float = _QUERY_BU
         return 1 if (time.monotonic() - start) > budget_s else 0
 
     conn.set_progress_handler(_abort, 20000)  # checked every ~20k VM steps
-from . import frontmatter
 
 # Folders exempt from the two-type scheme (mirrors the vault convention doc): the
 # system dirs that don't carry knowledge/note frontmatter.
