@@ -21,6 +21,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
+from .safe_regex import looks_catastrophic
+
 
 # ---------------------------------------------------------------------------
 # Closed sets
@@ -171,6 +173,17 @@ class Condition(BaseModel):
     field: str = Field(description="dotted path into tool_input, e.g. 'command' or 'file_path'")
     op: MatchOp
     value: str
+
+    @model_validator(mode="after")
+    def _reject_catastrophic_regex(self) -> "Condition":
+        # Model-authored regex must never be a ReDoS risk. Refuse the obvious
+        # nested-quantifier / over-long forms at construction so they never reach the
+        # catalog; the runtime bound in enforce.safe_search is the complete backstop.
+        if self.op in (MatchOp.REGEX, MatchOp.NOT_REGEX) and looks_catastrophic(self.value):
+            raise ValueError(
+                f"regex pattern rejected as a ReDoS risk (nested quantifier or over-long): {self.value!r}"
+            )
+        return self
 
 
 class Match(BaseModel):

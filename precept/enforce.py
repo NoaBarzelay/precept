@@ -19,6 +19,7 @@ from typing import Any, Callable
 
 from . import paths
 from .adapters import claude_code as cc
+from .safe_regex import safe_search
 
 # ReDoS / abuse guards for LLM-generated patterns (re2 is the eventual upgrade).
 _MAX_PATTERN = 2000
@@ -60,9 +61,11 @@ def _check(value: str, op: str, target: str) -> bool:
         if op == "glob":
             return fnmatch.fnmatch(value, target)
         if op == "regex":
-            return re.search(target, value) is not None
+            # ReDoS-safe: a catastrophic pattern fails safe (None -> no match), never hangs.
+            return safe_search(target, value) is True
         if op == "not_regex":  # matches when the pattern is ABSENT (presence-required rules)
-            return re.search(target, value) is None
+            # None (error/timeout) -> not False -> rule does not fire (fail open).
+            return safe_search(target, value) is False
     except re.error:
         return False
     return False

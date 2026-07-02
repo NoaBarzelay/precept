@@ -133,6 +133,7 @@ The enforcement engine needs no model. The learning loop does, selected by `PREC
 
 ## Repository guide
 
+- `ARCHITECTURE.md`: the module map and data flow.
 - `DECISIONS.md`: the load-bearing engineering decisions with their reasons.
 - `ROADMAP.md`: planned direction (the data-catalog upgrade, background learning, the remaining entity types, hardening).
 - `docs/ARTIFACTS.md`: the per-entity spec and status tracker.
