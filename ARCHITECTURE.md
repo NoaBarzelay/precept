@@ -87,7 +87,16 @@ On every guarded tool call and every Stop, Claude Code runs a `precept-hook-*` e
 ## Key seams
 
 - **Inference backend** (`inference.py`): the model client is chosen by `PRECEPT_INFERENCE` and injected at every AI seam, so the whole suite runs offline against a fake client.
-- **HARD/SOFT boundary** (`models.py`): enforced in the type system, not asserted, so an entity cannot claim enforcement it cannot deliver.
+- **HARD/SOFT boundary** (`models.py`): enforced in the type system, not asserted, so an entity cannot claim enforcement it cannot deliver. `Policy._shape_matches_kind` rejects a HARD tier on any event that cannot block:
+
+  ```python
+  if self.enforcement_tier is Tier.HARD and self.hook_event not in BLOCKABLE_EVENTS:
+      raise ValueError(
+          f"HARD tier requires a blockable event; {self.hook_event} cannot deny a call"
+      )
+  ```
+
+- **Judgment gate** (`judge.py`): an invariant with no mechanical check ("no stub code") runs a model verdict at a deterministic gate. The Stop hook fires every turn (timing never depends on the model); a cheap structured `{ok, reason}` verdict decides at that gate. The verdict prompt is stored on the entity's card (auditable), a relevance gate skips the call on turns where the rule cannot apply, and the path fails open: a missing key or model error never blocks a session.
 - **Host adapter** (`adapters/claude_code.py`): the only module that knows the Claude Code hook contract, so a second host is an adapter, not a rewrite.
 - **Local-first split** (`paths.py`): the markdown catalog is the source of truth and is sync-safe; the derived SQLite index and policy cache are local-only because SQLite corrupts under cloud sync.
 
