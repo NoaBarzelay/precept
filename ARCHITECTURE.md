@@ -29,6 +29,8 @@ A map of the codebase so a reader can navigate it without reading all of it. Pre
 
 The Data pillar (knowledge notes) rides the same review gate but commits to a local SQLite index instead of the policy cache, and is surfaced by relevance at prompt time (knowledge/retrieval.py).
 
+Terminology: an **entity** is the catalog record (the typed, reviewable object Precept defines and governs); an **artifact** is the compiled output an entity produces at its commit target (a hook policy, a rules file, a SKILL.md). The code's `ArtifactType` enum names the commit-target kind.
+
 ## Module map
 
 ### Enforcement core (the hot path, stdlib only)

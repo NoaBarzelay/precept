@@ -15,7 +15,7 @@ Claude Code is my primary development agent. Working with it produces durable as
 | # | Goal | Success metric |
 |---|------|----------------|
 | G1 | Keep my agent aligned to how I work | Corrected-behavior delta with enforcement on vs off, measured as paired trials with a 95% CI (`evals/live.py`); deterministic scorecard at 100% recall, 0 false-blocks on the committed golden set |
-| G2 | Catalog my processes and data so nothing evaporates | Every kept correction lands as a typed entity with a defined commit target; the catalog stays current through decay and supersede governance |
+| G2 | Catalog my processes and data durably | Every kept correction lands as a typed entity with a defined commit target; the catalog stays current through decay and supersede governance |
 | G3 | Improve continuously with low effort | My workflow is review-only: keep or delete proposals; no hand-authoring of configuration |
 
 ## Non-goals
