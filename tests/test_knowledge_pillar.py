@@ -13,7 +13,7 @@ import pytest
 
 from precept.knowledge import audit as kaudit
 from precept.knowledge import config as kconfig
-from precept.knowledge import conventions as kconv
+from precept.knowledge import naming_spec as kconv
 from precept.knowledge import index as kindex
 
 

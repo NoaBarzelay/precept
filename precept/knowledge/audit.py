@@ -22,8 +22,8 @@ from enum import Enum
 from pathlib import Path
 
 from ..safety import atomic_write_text
-from . import conventions, frontmatter
-from .conventions import ConventionSpec
+from . import frontmatter, naming_spec
+from .naming_spec import ConventionSpec
 from .index import iter_markdown
 
 
@@ -63,8 +63,8 @@ class Finding:
 def normalize_stem(stem: str) -> str:
     """Best-effort English-name normalization for the mechanical fixes (underscore /
     date-suffix / title-case). Non-English content is NOT translated here."""
-    s = conventions._DATE_SUFFIX.sub("", stem)   # drop a trailing date suffix
-    s = conventions.normalize_typography(s)       # em dash / curly quotes -> ASCII
+    s = naming_spec._DATE_SUFFIX.sub("", stem)   # drop a trailing date suffix
+    s = naming_spec.normalize_typography(s)       # em dash / curly quotes -> ASCII
     s = s.replace("_", " ")                       # underscores -> spaces
     s = re.sub(r"\s+", " ", s).strip()
     return _to_title_case(s)
@@ -83,11 +83,11 @@ def _to_title_case(stem: str) -> str:
             out.append(tok)  # intentional internal caps (dltHub, iPhone, gRPC) — keep
         elif core and any(c.isdigit() for c in core):
             out.append(tok)  # alphanumeric identifier/version (a16z, v6) — keep
-        elif core and core.lower() in conventions._LOWER_BRANDS:
+        elif core and core.lower() in naming_spec._LOWER_BRANDS:
             out.append(tok)  # all-lowercase brand (npm) — keep
         elif core and core.isupper() and len(core) > 1:
             out.append(tok)  # keep acronyms (VC, AI, ...) as-is
-        elif word_index != 0 and tok.lower() in conventions._TITLE_MINOR:
+        elif word_index != 0 and tok.lower() in naming_spec._TITLE_MINOR:
             out.append(tok.lower())
         else:
             out.append(tok[:1].upper() + tok[1:])
@@ -124,7 +124,7 @@ def audit(vault: str | Path, spec: ConventionSpec | None = None) -> list[Finding
     vault when not supplied)."""
     vault = Path(vault)
     if spec is None:
-        spec, _ = conventions.suggest_from_vault(vault)
+        spec, _ = naming_spec.suggest_from_vault(vault)
 
     findings: list[Finding] = []
     # Pre-compute, per folder, the set of base stems (date-suffix stripped) to detect
@@ -132,14 +132,14 @@ def audit(vault: str | Path, spec: ConventionSpec | None = None) -> list[Finding
     stripped_by_folder: dict[str, dict[str, int]] = {}
     for path in iter_markdown(vault):
         folder = _rel_folder(vault, path)
-        base = conventions._DATE_SUFFIX.sub("", path.stem)
+        base = naming_spec._DATE_SUFFIX.sub("", path.stem)
         stripped_by_folder.setdefault(folder, {})
         stripped_by_folder[folder][base] = stripped_by_folder[folder].get(base, 0) + 1
 
     for path in iter_markdown(vault):
         rel = path.relative_to(vault).as_posix()
         folder = _rel_folder(vault, path)
-        exempt = conventions.is_exempt(folder, spec.exempt_folders)
+        exempt = naming_spec.is_exempt(folder, spec.exempt_folders)
         stem = path.stem
         try:
             meta, body = frontmatter.split(path.read_text(encoding="utf-8", errors="replace"))
@@ -152,16 +152,16 @@ def audit(vault: str | Path, spec: ConventionSpec | None = None) -> list[Finding
         if not exempt:
             reasons: list[RenameReason] = []
             # Imported web-slug files mirror their source URLs and are left as-is.
-            if not conventions.is_import_slug(stem):
-                if spec.english_only and conventions.has_foreign_letters(stem):
+            if not naming_spec.is_import_slug(stem):
+                if spec.english_only and naming_spec.has_foreign_letters(stem):
                     reasons.append(RenameReason.NON_ENGLISH)
-                if conventions.has_typographic(stem):
+                if naming_spec.has_typographic(stem):
                     reasons.append(RenameReason.TYPOGRAPHIC)
-                if spec.no_date_suffix and conventions.has_date_suffix(stem):
+                if spec.no_date_suffix and naming_spec.has_date_suffix(stem):
                     reasons.append(RenameReason.DATE_SUFFIX)
                 if spec.spaces_not_underscores and "_" in stem:
                     reasons.append(RenameReason.UNDERSCORE)
-                if spec.title_case and not conventions.is_title_case(stem):
+                if spec.title_case and not naming_spec.is_title_case(stem):
                     reasons.append(RenameReason.NOT_TITLE_CASE)
             if reasons:
                 findings.append(_rename_finding(vault, path, rel, folder, stem, reasons, doc_type, stripped_by_folder))
@@ -201,7 +201,7 @@ def _rename_finding(
     # Collision: would stripping the date suffix land on an existing base in this folder?
     collision = False
     if RenameReason.DATE_SUFFIX in reasons:
-        base = conventions._DATE_SUFFIX.sub("", stem)
+        base = naming_spec._DATE_SUFFIX.sub("", stem)
         if stripped_by_folder.get(folder, {}).get(base, 0) > 1:
             collision = True
 

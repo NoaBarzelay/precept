@@ -20,7 +20,7 @@ from datetime import date as _date
 from pathlib import Path
 
 from . import catalog, paths
-from .detect import _slugify
+from .detect import slugify
 from .models import (
     ArtifactType, CheckKind, Condition, Decision, Determinism, Durability,
     EnforcementTier, GroundedSignals, HookEvent, Lesson, Match, MatchOp, Origin,
@@ -64,7 +64,7 @@ def lesson_from_permission(rule: str, decision: Decision, *, today: _date | None
     if not validate_match(match):
         return None
     verb = "Deny" if decision == Decision.DENY else "Confirm"
-    slug = _slugify(f"{verb}-{tool}-{pattern or 'all'}")
+    slug = slugify(f"{verb}-{tool}-{pattern or 'all'}")
     lesson = Lesson(
         id=slug,
         created=today or _date.today(),
@@ -113,7 +113,7 @@ def import_claude_md(text: str, *, limit: int = 50, today: _date | None = None) 
         if len(directive.split()) < 3 or len(directive) > 200:
             continue
         out.append(Lesson(
-            id=_slugify(directive), created=today or _date.today(),
+            id=slugify(directive), created=today or _date.today(),
             origin=Origin.BOOTSTRAP, source_session="bootstrap:CLAUDE.md",
             status=Status.PENDING, artifact_type=ArtifactType.CONVENTION,
             scope=Scope.GLOBAL, determinism=Determinism.STYLISTIC,

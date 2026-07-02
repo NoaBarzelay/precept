@@ -1,6 +1,6 @@
 """Token metering — capture each LLM flow's real usage and price it.
 
-Every Precept LLM flow (DETECT, COMPILE, the three JUDGE verdicts) calls
+Every Precept LLM flow (DETECT, COMPILE, CAPTURE, the three JUDGE verdicts) calls
 `client.messages.parse(...)` and today keeps only `.parsed_output`, discarding the
 `.usage` that rides on the same response. `meter.record(flow, model, resp)` pulls
 that usage off and appends ONE row to a local JSONL meter, so `precept tokens`
@@ -31,10 +31,11 @@ from typing import Any
 
 from . import paths
 
-# Flow identifiers — the five token-spending call sites. Imported by the call sites
+# Flow identifiers — the six token-spending call sites. Imported by the call sites
 # (so the string is defined once) and by evals/tokens.py (the static-ledger registry).
 DETECT = "detect"
 COMPILE = "compile"
+CAPTURE = "capture"
 JUDGE_VERDICT = "judge.verdict"
 JUDGE_CONSOLIDATED = "judge.consolidated"
 JUDGE_CONFLICT = "judge.conflict"

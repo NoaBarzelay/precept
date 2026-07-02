@@ -14,8 +14,10 @@ import fnmatch
 import json
 import os
 import re
+import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import paths
 from .adapters import claude_code as cc
@@ -34,6 +36,52 @@ def load_compiled(path: Path | None = None) -> list[dict[str, Any]]:
         return data if isinstance(data, list) else []
     except (OSError, ValueError):
         return []  # no cache yet / unreadable -> enforce nothing (fail open)
+
+
+def _log_decision(policy: dict[str, Any], hook_event: str, decision: str) -> None:
+    """Append one decision-log line for a policy MATCH — the record that makes
+    `fire_count` real (`precept why` and decay governance derive live counts from it).
+    FAIL-OPEN like `_mark_stop_surfaced`: any error is swallowed, so logging can NEVER
+    affect the decision or block a session. Append-only JSONL (one self-contained line
+    per match), so a torn write costs at most the trailing line."""
+    try:
+        row = {
+            "ts": time.time(),
+            "policy_id": str(policy.get("id", "")),
+            "lesson_id": str(policy.get("lesson_id", "")),
+            "hook_event": hook_event,
+            "decision": decision,
+        }
+        p = paths.decision_log()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception:
+        pass  # fail open: observability must never disturb enforcement
+
+
+def decision_fire_counts(path: Path | None = None) -> dict[str, int]:
+    """Live per-LESSON fire counts derived from the decision log (matches per lesson_id).
+    The readers (`precept why`, governance decay) PREFER this over the static
+    `GroundedSignals.fire_count` field. FAIL-OPEN: a missing/unreadable log yields {}
+    (readers then fall back to the static field); unparseable lines are skipped."""
+    p = path or paths.decision_log()
+    counts: dict[str, int] = {}
+    try:
+        for line in Path(p).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue  # torn/partial line
+            lid = rec.get("lesson_id") if isinstance(rec, dict) else None
+            if lid:
+                counts[lid] = counts.get(lid, 0) + 1
+    except OSError:
+        return {}
+    return counts
 
 
 def _get_field(tool_input: dict[str, Any], dotted: str) -> str:
@@ -149,13 +197,18 @@ def evaluate_pretooluse(
     event: dict[str, Any],
     policies: list[dict[str, Any]] | None = None,
     context_rules: list[dict[str, Any]] | None = None,
+    *,
+    record: bool = True,
 ) -> dict:
     """Return the PreToolUse hook output (allow/deny/ask/rewrite) per the live contract.
 
     Context rules (item A) ride ON TOP of the allow decision: after the deny/ask/rewrite
     resolution, only when the call is otherwise ALLOWED do we attach any matching context
     rules' concatenated text as additionalContext. A deny/ask wins and blocks; a rewrite
-    keeps its own shape — context rules never change the verdict, they only add a reminder."""
+    keeps its own shape — context rules never change the verdict, they only add a reminder.
+
+    `record=False` (dry-run callers: the eval harness, `precept explain`) skips the
+    decision-log append so hypothetical calls never inflate live fire counts."""
     pols = policies if policies is not None else load_compiled()
     tool_name = event.get("tool_name", "")
     tool_input = event.get("tool_input", {}) or {}
@@ -173,10 +226,16 @@ def evaluate_pretooluse(
         decision = winner.get("decision", "allow")
         reason = winner.get("message", "Blocked by a Precept rule.")
         if decision == "deny":
+            if record:
+                _log_decision(winner, "PreToolUse", "deny")
             return cc.pretooluse_deny(reason)
         if decision == "ask":
+            if record:
+                _log_decision(winner, "PreToolUse", "ask")
             return cc.pretooluse_ask(reason)
         if decision == "rewrite" and winner.get("rewrite_to"):
+            if record:
+                _log_decision(winner, "PreToolUse", "rewrite")
             # updatedInput REPLACES the tool's arguments wholesale (per the hook contract),
             # so a partial rewrite_to must be MERGED over the original input or it would drop
             # the sibling fields (e.g. a {new_string: ...} rewrite would erase file_path).
@@ -287,6 +346,7 @@ def evaluate_stop_entries(
     verdict_fn: Callable[[list, str], dict | None] | None = None,
     cwd: str = "",
     session_id: str = "",
+    record: bool = True,
 ) -> dict:
     """Evaluate Stop rules over already-parsed transcript entries (also used by the
     eval harness, which supplies inline transcripts).
@@ -369,6 +429,8 @@ def evaluate_stop_entries(
                 if _stop_already_surfaced(session_id, q["id"]):
                     continue  # already surfaced this session -> do not block again
                 _mark_stop_surfaced(session_id, q["id"])
+            if record:
+                _log_decision(p, "Stop", "block")
             return cc.stop_block(p.get("message") or _reason(v) or "A required standard was not met.")
     return cc.stop_allow()
 
@@ -390,6 +452,8 @@ def evaluate_userpromptsubmit(
     event: dict[str, Any],
     policies: list[dict[str, Any]] | None = None,
     verdict_fn: Callable[[list, str], dict | None] | None = None,
+    *,
+    record: bool = True,
 ) -> dict:
     """Prompt-time rules (item D). FAIL-OPEN. Two flavors, both scope-filtered by cwd:
 
@@ -424,7 +488,11 @@ def evaluate_userpromptsubmit(
                 msg = p.get("message")
                 if msg:
                     injected.append(msg)
+                    if record:
+                        _log_decision(p, "UserPromptSubmit", "context")
                 continue
+            if record:
+                _log_decision(p, "UserPromptSubmit", "block")
             return cc.userpromptsubmit_block(
                 p.get("message") or "Blocked by a Precept prompt rule."
             )
@@ -445,6 +513,8 @@ def evaluate_userpromptsubmit(
                 v = result.get(q["id"])
                 if v is not None and not _ok(v):
                     p = by_id[q["id"]]
+                    if record:
+                        _log_decision(p, "UserPromptSubmit", "block")
                     return cc.userpromptsubmit_block(
                         p.get("message") or _reason(v) or "Blocked by a Precept prompt rule."
                     )

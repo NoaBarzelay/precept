@@ -92,7 +92,7 @@ class _FakeClient:
 
 def test_static_ledger_authoritative_with_injected_client():
     rows = tok.static_ledger(client=_FakeClient())
-    assert len(rows) == 5  # the five token-spending flows
+    assert len(rows) == 6  # the six token-spending flows
     assert all(r["method"] == "count_tokens" for r in rows)
     assert all(r["overhead_tokens"] == 777 for r in rows)
     # detect/judge are Haiku ($1/MTok in): 777 tok * 1000 calls -> $0.777
@@ -104,7 +104,7 @@ def test_static_ledger_falls_back_to_offline_estimate_without_client():
     # No client and no key path: still returns a full table, flagged as estimate.
     rows = tok.static_ledger(client=None)
     # In CI there's no key, so expect estimates; each is a positive int.
-    assert len(rows) == 5
+    assert len(rows) == 6
     for r in rows:
         assert r["overhead_tokens"] > 0
         assert r["method"] in ("count_tokens", "estimate")

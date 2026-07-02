@@ -24,7 +24,7 @@ from .. import paths
 from ..safety import atomic_write_text, connect_db
 from . import audit as kaudit
 from . import config as kconfig
-from . import conventions as kconv
+from . import naming_spec as kconv
 from . import frontmatter
 from . import index as kindex
 from . import store

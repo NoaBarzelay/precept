@@ -18,18 +18,18 @@ permission block, so an ARCHIVED rule stops enforcing the moment it's archived +
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date as _date
-from typing import Callable, Optional
 
-from . import catalog
+from . import catalog, enforce
 from .models import Lesson, Status
 
 # A rule that has never fired for this many days since creation is proposed for decay.
 DEFAULT_DECAY_DAYS = 30
 
 # verdict_fn(rule_a_text, rule_b_text) -> {"conflicts": bool, "reason": str} | None
-ConflictFn = Callable[[str, str], Optional[dict]]
+ConflictFn = Callable[[str, str], dict | None]
 
 
 @dataclass
@@ -58,15 +58,22 @@ def propose_decay(
     *,
     threshold_days: int = DEFAULT_DECAY_DAYS,
     today: _date | None = None,
+    fire_counts: dict[str, int] | None = None,
 ) -> list[DecayProposal]:
-    """ACTIVE rules that have never fired (fire_count==0) and are older than the
-    threshold are proposed for retirement. PENDING/ARCHIVED rules are out of scope (a
-    PENDING rule was never enforced, so 'never fired' is not evidence it's dead)."""
+    """ACTIVE rules that have never fired and are older than the threshold are proposed
+    for retirement. PENDING/ARCHIVED rules are out of scope (a PENDING rule was never
+    enforced, so 'never fired' is not evidence it's dead).
+
+    'Fired' is judged against the LIVE decision log (enforce.decision_fire_counts —
+    every real enforcement match appends there), falling back to the static
+    `signals.fire_count` field for back-compat. `fire_counts` is injectable for tests."""
     lessons = catalog.load_all() if lessons is None else lessons
     today = today or _date.today()
+    counts = enforce.decision_fire_counts() if fire_counts is None else fire_counts
     out: list[DecayProposal] = []
     for le in lessons:
-        if le.status != Status.ACTIVE or le.signals.fire_count > 0:
+        fired = counts.get(le.id, 0) or le.signals.fire_count
+        if le.status != Status.ACTIVE or fired > 0:
             continue
         age = (today - le.created).days
         if age >= threshold_days:

@@ -67,19 +67,21 @@ def _blocked(case: dict[str, Any]) -> bool:
         injected = case.get("injected_verdicts", {})
         def vf(questions, context, _v=injected):
             return _v
+        # record=False everywhere here: golden cases are hypothetical dry-runs and must
+        # never append to the live decision log (that would inflate real fire counts).
         out = enforce.evaluate_stop_entries(
-            case["transcript"], pols, verdict_fn=vf, cwd=case.get("cwd", "")
+            case["transcript"], pols, verdict_fn=vf, cwd=case.get("cwd", ""), record=False
         )
         return out.get("decision") == "block"
     if kind == "userpromptsubmit":
         injected = case.get("injected_verdicts", {})
         def vf(questions, context, _v=injected):
             return _v
-        out = enforce.evaluate_userpromptsubmit(case["event"], pols, verdict_fn=vf)
+        out = enforce.evaluate_userpromptsubmit(case["event"], pols, verdict_fn=vf, record=False)
         return out.get("decision") == "block"
     # PreToolUse. The cwd (when present) rides INSIDE the call event, which
     # evaluate_pretooluse already reads via event.get("cwd") for scope filtering.
-    out = enforce.evaluate_pretooluse(case["call"], pols)
+    out = enforce.evaluate_pretooluse(case["call"], pols, record=False)
     hs = out["hookSpecificOutput"]
     # A rewrite is an allow + updatedInput (NOT a block); when a case asserts the
     # transformed payload, verify it and count the case as a correctly-handled allow.

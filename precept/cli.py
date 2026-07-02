@@ -7,6 +7,7 @@ enforces until a human keeps it.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -58,8 +59,13 @@ def why(lesson_id: str) -> None:
     console.print(f"  created:  {le.created}")
     console.print(f"  quote:    {le.origin_quote or '[dim](none)[/dim]'}")
     s = le.signals
+    # 'fired' prefers the LIVE decision log (every real enforcement match appends there);
+    # the static fire_count field is the back-compat fallback.
+    from . import enforce as _enforce
+
+    fired = _enforce.decision_fire_counts().get(le.id, 0) or s.fire_count
     console.print(f"  signals:  quote={s.has_verbatim_quote} imperative={s.imperative_correction} "
-                  f"deterministic={s.deterministic_by_construction} kept={s.human_kept} fired={s.fire_count}")
+                  f"deterministic={s.deterministic_by_construction} kept={s.human_kept} fired={fired}")
     console.print(f"  policies: {len(le.policies)}")
 
 
@@ -192,6 +198,104 @@ def evals(strict: bool = typer.Option(False, help="exit nonzero on any miss/fals
 
 
 @app.command()
+def explain(
+    tool: str = typer.Option(None, "--tool", help="tool name for a PreToolUse call, e.g. Bash"),
+    input_json: str = typer.Option("{}", "--input", help="the tool_input as JSON, e.g. '{\"command\":\"npm install\"}'"),
+    event: str = typer.Option("pretooluse", "--event", help="'pretooluse' (default) or 'stop'"),
+    transcript: str = typer.Option(None, "--transcript", help="transcript path (required with --event stop)"),
+    cwd: str = typer.Option("", "--cwd", help="working dir used for scope filtering (repo-scoped rules)"),
+) -> None:
+    """Dry-run the LIVE compiled policy cache against one hypothetical call: print each
+    candidate policy (matched / no match / out of scope / skipped) and the final decision.
+    Nothing is enforced and nothing is appended to the decision log (fire counts stay real)."""
+    import json as _json
+
+    from . import enforce as _enforce
+
+    ev = event.strip().lower()
+    if ev not in ("pretooluse", "stop"):
+        console.print(f"[red]Unknown --event '{event}' (use 'pretooluse' or 'stop').[/red]")
+        raise typer.Exit(1)
+    pols = _enforce.load_compiled()
+    if not pols:
+        console.print(f"[dim]No compiled policies at {paths.policies_cache()} (run `precept compile`).[/dim]")
+        return
+
+    t = Table("policy", "lesson", "event/kind", "status")
+
+    if ev == "stop":
+        if not transcript:
+            console.print("[red]--event stop needs --transcript <path>.[/red]")
+            raise typer.Exit(1)
+        from .adapters import claude_code as cc
+
+        entries = cc.read_transcript(transcript)
+        calls = _enforce._transcript_tool_calls(entries)
+        for p in pols:
+            ek = f"{p.get('hook_event')}/{p.get('check_kind')}"
+            if p.get("hook_event") != "Stop":
+                status = "skipped (not a Stop policy)"
+            elif not _enforce._in_scope(p, cwd):
+                status = "out of scope (cwd not in this rule's repo)"
+            elif p.get("check_kind") == "trajectory":
+                requires = (p.get("trajectory") or {}).get("requires")
+                met = any(_enforce._matches(requires, n, i) for n, i in calls)
+                status = ("requirement met (rule moot)" if met
+                          else "MATCHED gate: requirement UNMET -> would ask the AI claim verdict")
+            elif p.get("check_kind") == "judgment":
+                aw = p.get("applies_when")
+                relevant = aw is None or any(_enforce._matches(aw, n, i) for n, i in calls)
+                status = ("MATCHED gate: relevant this turn -> would ask the AI verdict" if relevant
+                          else "not relevant this turn (applies_when unmatched, skipped free)")
+            else:
+                status = f"skipped (check_kind={p.get('check_kind')})"
+            t.add_row(str(p.get("id", "?")), str(p.get("lesson_id", "?")), ek, status)
+        console.print(t)
+        # Deterministic dry-run: AI verdicts are NOT called; an empty verdict map means
+        # any question falls through to allow (exactly the runtime's fail-open shape).
+        out = _enforce.evaluate_stop_entries(
+            entries, pols, verdict_fn=lambda q, c: {}, cwd=cwd, record=False
+        )
+        final = out.get("decision") or "allow"
+        console.print(f"\n[bold]Final (deterministic gates only — no AI verdicts were called):[/bold] {final}")
+        return
+
+    if not tool:
+        console.print("[red]--event pretooluse needs --tool <name> (and usually --input '<json>').[/red]")
+        raise typer.Exit(1)
+    try:
+        tool_input = _json.loads(input_json)
+        if not isinstance(tool_input, dict):
+            raise ValueError("tool_input must be a JSON object")
+    except ValueError as exc:
+        console.print(f"[red]--input is not a JSON object: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    for p in pols:
+        ek = f"{p.get('hook_event')}/{p.get('check_kind')}"
+        if p.get("hook_event") != "PreToolUse" or p.get("check_kind") != "single_call":
+            status = "skipped (not a PreToolUse single_call policy)"
+        elif not _enforce._in_scope(p, cwd):
+            status = "out of scope (cwd not in this rule's repo)"
+        elif not _enforce._matches(p.get("match"), tool, tool_input):
+            status = "no match"
+        else:
+            status = f"MATCHED -> {p.get('decision', 'allow')}"
+        t.add_row(str(p.get("id", "?")), str(p.get("lesson_id", "?")), ek, status)
+    console.print(t)
+
+    out = _enforce.evaluate_pretooluse(
+        {"tool_name": tool, "tool_input": tool_input, "cwd": cwd}, pols, record=False
+    )
+    hs = out.get("hookSpecificOutput", {})
+    final = hs.get("permissionDecision", "allow")
+    if hs.get("updatedInput") is not None:
+        final = f"allow with rewrite -> {_json.dumps(hs['updatedInput'])}"
+    reason = hs.get("permissionDecisionReason") or ""
+    console.print(f"\n[bold]Final decision:[/bold] {final}" + (f"  [dim]{reason}[/dim]" if reason else ""))
+
+
+@app.command()
 def tokens(
     static: bool = typer.Option(False, "--static", help="show the fixed prompt-cost ledger (system+schema per flow) instead of the live meter"),
     refresh_baseline: bool = typer.Option(False, "--refresh-baseline", help="recompute the authoritative static ledger and overwrite token_baseline.json"),
@@ -277,15 +381,14 @@ def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is 
     console.print(f"  state/index (local-only):  {paths.state_dir()}")
     console.print(f"  policy cache:              {paths.policies_cache()}")
     console.print(f"  claude home (commit tgt):  {paths.claude_home()}")
-    synced = any(tok in str(paths.state_dir()) for tok in ("Mobile Documents", "iCloud", "Dropbox"))
-    if synced:
+    from . import doctor as _doctor
+
+    if _doctor.state_dir_is_synced():
         console.print("  [red]WARNING: state dir looks cloud-synced — SQLite can corrupt. Set PRECEPT_STATE_DIR to a local path.[/red]")
     else:
         console.print("  [green]state dir is on a local path (safe for SQLite).[/green]")
 
     # --- BEGIN item 2: hook-reachability checks (additive; safe to relocate) ----------
-    from . import doctor as _doctor
-
     checks = _doctor.check_hooks()
     console.print("\n[bold]Hooks[/bold] (settings.json -> reachable entrypoint):")
     for c in checks:
@@ -593,7 +696,7 @@ def knowledge_search(
 @knowledge_app.command("audit")
 def knowledge_audit(vault: str = typer.Option(None, help="vault root (else $PRECEPT_VAULT)")) -> None:
     """Print the integrity/rename plan (DRY-RUN — never applies anything)."""
-    from .knowledge import audit as kaudit, conventions as kconv
+    from .knowledge import audit as kaudit, naming_spec as kconv
 
     v = _resolve_vault_or_exit(vault)
     spec, stats = kconv.suggest_from_vault(v)
@@ -634,7 +737,7 @@ def knowledge_confirm(
     from .knowledge import store
 
     v = _resolve_vault_or_exit(vault)
-    target = (v / path) if not str(path).startswith("/") else __import__("pathlib").Path(path)
+    target = (v / path) if not str(path).startswith("/") else Path(path)
     if not target.exists():
         console.print(f"[red]No such file: {target}[/red]")
         raise typer.Exit(1)

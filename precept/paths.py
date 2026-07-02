@@ -142,6 +142,22 @@ def managed_conventions_manifest() -> Path:
     return state_dir() / "managed_conventions.json"
 
 
+def decision_log() -> Path:
+    """Append-only JSONL of enforcement decisions — one line per policy MATCH (a
+    deny/ask/rewrite at PreToolUse, a Stop block, a UserPromptSubmit block or context
+    injection): {ts, policy_id, lesson_id, hook_event, decision}. This is what makes
+    `fire_count` real: `precept why` and decay governance derive live fire counts from
+    it. Derived/disposable/local (state dir, never the synced vault)."""
+    return state_dir() / "decisions.jsonl"
+
+
+def debug_log() -> Path:
+    """Opt-in (PRECEPT_DEBUG=1) traceback log for the hook entrypoints, which otherwise
+    swallow every exception by design (fail-open). Best-effort: a failed debug write is
+    itself swallowed. Derived/disposable/local (state dir, never the synced vault)."""
+    return state_dir() / "debug.log"
+
+
 def stop_surfaced_ledger() -> Path:
     """Per-session record of which JUDGMENT Stop policies have already blocked once, so a
     judgment nudge surfaces ONCE per session and never nags every turn. Keyed by session_id.

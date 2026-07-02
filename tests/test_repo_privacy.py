@@ -53,7 +53,9 @@ def test_no_local_config_or_working_docs_tracked():
 _PERSONAL_MARKERS = re.compile(
     r"/Users/[a-z]+/"          # absolute home paths (machine-specific, may reveal identity)
     r"|\+1-\d{3}-\d{3}-\d{4}"  # US phone numbers
-    r"|iCloud~md~obsidian"      # the private vault mount
+    # The private vault mount. Spelled as two adjacent literals so this gate file does
+    # not match its own pattern source (it scans itself like every tracked text file).
+    r"|iCloud~md~" r"obsidian"
 )
 
 _TEXT_SUFFIXES = {".py", ".md", ".toml", ".json", ".yml", ".yaml", ".txt", ".cfg", ".ini"}

@@ -39,16 +39,19 @@ DRIFT_TOLERANCE = 0.10  # >10% change in a flow's fixed overhead is a regression
 
 
 def _flows() -> list[dict[str, Any]]:
-    """The five token-spending flows, each as (flow id, model, system prompt, schema
+    """The six token-spending flows, each as (flow id, model, system prompt, schema
     model). Imported lazily so this module stays import-light for the CLI."""
     from .. import detect, judge, synthesize
-    from ..models import MaybeLesson
+    from ..knowledge import capture
+    from ..models import MaybeKnowledge, MaybeLesson
 
     return [
         {"flow": meter.DETECT, "model": detect.CLASSIFIER_MODEL,
          "system": detect.SYSTEM, "schema": MaybeLesson},
         {"flow": meter.COMPILE, "model": synthesize.SYNTH_MODEL,
          "system": synthesize.SYSTEM, "schema": synthesize.PolicyDraft},
+        {"flow": meter.CAPTURE, "model": capture.CAPTURE_MODEL,
+         "system": capture.SYSTEM, "schema": MaybeKnowledge},
         {"flow": meter.JUDGE_VERDICT, "model": judge.JUDGE_MODEL,
          "system": judge.SYSTEM, "schema": judge.Verdict},
         {"flow": meter.JUDGE_CONSOLIDATED, "model": judge.JUDGE_MODEL,

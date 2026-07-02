@@ -83,9 +83,14 @@ class _ParseClient(Protocol):  # the slice of the Anthropic client we use (for t
         def parse(**kwargs: Any) -> Any: ...
 
 
-def _slugify(text: str) -> str:
+def slugify(text: str) -> str:
+    """Filesystem/id-safe slug (lowercase, dashes, max 6 words). Public: bootstrap and
+    the lesson minter both derive lesson ids from it."""
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return "-".join(s.split("-")[:6]) or "lesson"
+
+
+_slugify = slugify  # back-compat alias for older imports
 
 
 def _git_root(cwd: str | None) -> str | None:
@@ -236,7 +241,7 @@ def lesson_from_extraction(
         else:
             scope = Scope.GLOBAL
     return Lesson(
-        id=_slugify(ex.what_to_do_instead or ex.trigger),
+        id=slugify(ex.what_to_do_instead or ex.trigger),
         created=today or _date.today(),
         origin=Origin.CORRECTION,
         source_session=session,

@@ -25,6 +25,7 @@ import re
 from datetime import date as _date
 from typing import Any, Protocol
 
+from .. import meter
 from ..models import MaybeKnowledge
 from . import config as kconfig
 from . import store
@@ -96,8 +97,12 @@ def classify(context: str, client: _ParseClient | None = None) -> MaybeKnowledge
             messages=[{"role": "user", "content": context}],
             output_format=MaybeKnowledge,
         )
+        meter.record(meter.CAPTURE, CAPTURE_MODEL, resp)
         return resp.parsed_output
     except Exception as exc:  # network, parse, validation — never file on failure
+        from .. import inference
+
+        inference.note_failure(meter.CAPTURE, exc)  # de-silence: record, then still abstain
         return MaybeKnowledge(
             chain_of_thought="classifier unavailable",
             is_knowledge=False,

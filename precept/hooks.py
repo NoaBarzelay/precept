@@ -22,6 +22,30 @@ def _reentrant() -> bool:
     return os.environ.get("PRECEPT_SUBPROCESS") == "1"
 
 
+def _debug(context: str) -> None:
+    """Opt-in visibility into the fail-open design: the except blocks below swallow every
+    error traceless BY DESIGN (a Precept bug must never wedge a session). With
+    PRECEPT_DEBUG=1, this appends the current traceback to paths.debug_log() so the
+    swallowed error can still be inspected. Best-effort and itself fail-open — a failed
+    debug write changes nothing, and the hooks still return 0 either way."""
+    if os.environ.get("PRECEPT_DEBUG") != "1":
+        return
+    try:
+        import time
+        import traceback
+
+        from . import paths
+
+        p = paths.debug_log()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(f"--- {time.strftime('%Y-%m-%dT%H:%M:%S%z')} {context}\n")
+            f.write(traceback.format_exc())
+            f.write("\n")
+    except Exception:
+        pass  # fail open: debugging must never create the failure it records
+
+
 def pretooluse_main() -> int:
     if _reentrant():
         return 0
@@ -33,11 +57,11 @@ def pretooluse_main() -> int:
 
         telemetry.log_event(event)
     except Exception:
-        pass  # fail open
+        _debug("pretooluse.telemetry")  # fail open (traceback only with PRECEPT_DEBUG=1)
     try:
         cc.emit(enforce.evaluate_pretooluse(event))  # also applies context rules (item A)
     except Exception:
-        pass  # fail open
+        _debug("pretooluse.enforce")  # fail open
     return 0
 
 
@@ -57,7 +81,7 @@ def stop_main() -> int:
         # sink). It now runs once per session at SessionEnd (detect_main) instead. Set
         # PRECEPT_DISABLE_DETECT=1 to turn the learning loop off entirely (enforce-only).
     except Exception:
-        pass  # fail open
+        _debug("stop")  # fail open
     return 0
 
 
@@ -82,7 +106,7 @@ def sessionstart_main() -> int:
         if parts:
             cc.emit(cc.sessionstart_context("\n\n".join(parts)))
     except Exception:
-        pass  # fail open
+        _debug("sessionstart")  # fail open
     return 0
 
 
@@ -92,7 +116,7 @@ def userpromptsubmit_main() -> int:
     try:
         cc.emit(enforce.evaluate_userpromptsubmit(cc.read_event()))
     except Exception:
-        pass  # fail open
+        _debug("userpromptsubmit")  # fail open
     return 0
 
 
@@ -103,7 +127,7 @@ def detect_main() -> int:
     try:
         _spawn_detect(cc.read_event())
     except Exception:
-        pass
+        _debug("sessionend.detect")  # fail open
     return 0
 
 
