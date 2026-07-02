@@ -1,19 +1,18 @@
 # Precept
 
-Precept is a tool for Claude Code that converts user corrections into enforced configuration. Corrections that are mechanically checkable are compiled into Claude Code hooks that block a disallowed action (deny a tool call, block a Stop). Corrections that are not checkable are stored as context artifacts that steer but do not block. No artifact takes effect until the user approves it.
+Precept is a personal, self-improving platform for agentic AI work. It defines and catalogs two things as typed artifacts: the processes you run with AI (how you work) and the entities and data those processes act on. It improves both continuously, from how you work and from its own reading of best practices, and it always proposes rather than acting silently. Deterministic enforcement is one capability within it: the process artifacts that are mechanically checkable compile into Claude Code hooks that block a disallowed action, not notes that nudge.
 
-## Overview
+## Three pillars
 
-Claude Code exposes two kinds of configuration:
+- **Processes.** The workflows you run with AI, captured as typed artifacts: rules, conventions (`CLAUDE.md` and rules files), skills, agent personas, output styles, slash commands, MCP config, permission profiles. Some carry a HARD, enforced edge (rules, agent personas, permission profiles); the rest steer.
+- **Entities and data.** What those processes act on. Today this is a knowledge catalog for recall; a typed entity catalog is the planned upgrade.
+- **Self-improving.** A detect, review, compile loop authors and refines all of the above, from (a) how you work and (b) Precept's own autonomous learning (reading best practices and the web on its own judgment). It always proposes for human review and never acts silently.
 
-- **Context configuration** (`CLAUDE.md`, skills, rules files) is delivered to the model as text and is followed at the model's discretion. Claude Code's documentation describes these as context, with no strict-compliance guarantee.
-- **Deterministic configuration** (hooks, permission rules, subagent tool-scoping) is executed by Claude Code outside the model's control.
+## Why
 
-Precept classifies each correction and routes it to the correct layer. A checkable correction ("never run `npm`, use `pnpm`") becomes deterministic enforcement. A non-checkable correction ("do not leave stub code") becomes a context artifact or a gated model verdict. The boundary between the two tiers is enforced in the type system rather than asserted in prose.
+Working with an agent produces a stream of corrections, preferences, and procedures worth keeping: how you want it to work, what it should and should not do, the facts and entities it operates on. Left in chat they evaporate; written into a single memory file they accrete unread and are followed inconsistently. Precept captures each one as a typed, reviewable artifact, routes it to the right home (a rule, a skill, an agent persona, a knowledge note), and keeps the catalog small and current.
 
-## Problem
-
-Agent memory records a correction and then complies with it inconsistently, in practice on a majority of turns rather than all of them. This is acceptable for preferences and unacceptable for invariants. The cause is structural, not a tuning gap: context configuration carries no compliance guarantee, and the only layer Claude Code runs deterministically is hooks. Precept closes the gap between where a correction is expressed (context, soft) and where it can be enforced (hooks, hard).
+For the subset of processes that are invariants rather than preferences ("never run `npm`", "run the tests before claiming success"), steering is not enough. Claude Code exposes two configuration layers: context (`CLAUDE.md`, skills, rules files), which the model follows at its discretion, and deterministic (hooks, permission rules, subagent tool-scoping), which Claude Code executes outside the model's control. Precept compiles the checkable invariants into the deterministic layer so they block rather than nudge, and enforces the boundary between the two tiers in the type system rather than asserting it in prose.
 
 ## Concepts
 
@@ -23,6 +22,8 @@ Agent memory records a correction and then complies with it inconsistently, in p
 - **Artifact type**: the configuration target a Lesson compiles to. Nine types are defined; three are implemented (see Artifact types).
 
 ## Pipeline
+
+The self-improving loop that turns how you work into artifacts. It always proposes for human review and never acts silently.
 
 ```
 session transcript
@@ -49,7 +50,7 @@ DETECT fails closed (abstains rather than guess a false Lesson). ENFORCE fails o
 
 ## Enforcement model
 
-Every artifact is labeled HARD or SOFT, and enforcement is claimed only for the HARD tier.
+Enforcement is one capability of the platform: the HARD, enforced edge on process artifacts. Every artifact is labeled HARD or SOFT, and enforcement is claimed only for the HARD tier.
 
 - **HARD** is three mechanisms Claude Code runs without the model's cooperation: hooks (PreToolUse deny, Stop block, UserPromptSubmit block), the `permissions` `deny` array in `settings.json`, and subagent tool-scoping.
 - **SOFT** is everything delivered as context: knowledge notes, conventions, skills, output styles. Precept writes the artifact correctly and atomically; it does not claim the model will obey it.
@@ -80,7 +81,7 @@ A correction with no mechanical check ("do not leave stub code") uses a determin
 
 ## Artifact types
 
-Nine types are defined. Three are implemented; the other six ride the same Lesson spine and keep/veto gate and differ only in their COMMIT target.
+Nine types are defined. They populate two of the three pillars, and the self-improving loop authors them: types 1 and 3 through 9 are Processes (how you work), and type 2 is the Entities-and-data catalog (a typed entity catalog is the planned upgrade). Three types are implemented; the other six ride the same Lesson spine and keep/veto gate and differ only in their COMMIT target.
 
 | # | Type | Tier | Compiles to | Status |
 |---|------|------|-------------|--------|
