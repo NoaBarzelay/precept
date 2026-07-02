@@ -34,7 +34,7 @@ _NON_GATEABLE_ARTIFACTS = frozenset({
     ArtifactType.SKILL,
 })
 
-SYNTH_MODEL = "claude-sonnet-4-6"
+SYNTH_MODEL = "claude-sonnet-5"
 
 # The typed validator gate: a Match may only target a known tool + a real field of it.
 TOOL_FIELDS: dict[str, set[str]] = {
