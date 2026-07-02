@@ -1,12 +1,12 @@
 # Precept
 
-Precept is a personal, self-improving platform for agentic AI work. It captures how you work with an AI agent, and the data those workflows act on, as a catalog of typed, reusable artifacts. Where a workflow is a hard invariant rather than a preference, Precept compiles it into a Claude Code hook that blocks the mistake, instead of context the model can choose to ignore.
+Precept is a personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from your sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction, with background learning planned.
 
 ## Three pillars
 
-- **Processes.** The workflows you run with AI, captured as typed artifacts: rules, conventions (`CLAUDE.md` and rules files), skills, agent personas, output styles, slash commands, MCP config, permission profiles. Some carry a HARD, enforced edge (rules, agent personas, permission profiles); the rest steer.
-- **Entities and data.** What those processes act on. Today this is a knowledge catalog for recall; a typed entity catalog is the planned upgrade.
-- **Self-improving.** A detect, review, compile loop drafts and refines these artifacts from how you work, and always proposes them for human review rather than applying them silently. A planned extension has it also draft from its own reading of best practices.
+- **Processes.** The ways you work with an agent, captured as typed entities that Precept defines: rules, conventions (`CLAUDE.md` and rules files), skills, agent personas, output styles, slash commands, MCP config, permission profiles. Some carry a HARD, enforced edge (rules, agent personas, permission profiles); the rest steer.
+- **Data.** The knowledge and data those processes act on, catalogued for recall and reuse. A richer typed catalog is the planned upgrade.
+- **Self-improving.** A detect, review, compile loop drafts and refines these entities from how you work, and always proposes them for review rather than applying them silently. A planned extension also drafts from its own reading of best practices.
 
 ## Why
 
@@ -19,7 +19,7 @@ For the subset of processes that are invariants rather than preferences ("never 
 - **Lesson**: one correction captured as auditable data, stored as a markdown card. The source of truth.
 - **Policy**: a typed enforcement unit compiled from a Lesson. One Lesson compiles to zero or more Policies.
 - **Tier**: every artifact is HARD or SOFT. HARD blocks; SOFT steers. The tier is validated when the Policy is constructed.
-- **Artifact type**: the configuration target a Lesson compiles to. Nine types are defined; three are implemented (see Artifact types).
+- **Artifact type**: the kind of entity a Lesson compiles to (a rule, a knowledge note, a skill, and so on). "Artifact" and "entity" refer to the same defined objects. Nine types are defined; three are implemented (see Artifact types).
 
 ## Pipeline
 
@@ -50,7 +50,7 @@ DETECT fails closed (abstains rather than guess a false Lesson). ENFORCE fails o
 
 ## Enforcement model
 
-Enforcement is one capability of the platform: the HARD, enforced edge on process artifacts. Every artifact is labeled HARD or SOFT, and enforcement is claimed only for the HARD tier.
+Enforcement is one capability of the platform: the HARD, enforced edge on the process entities Precept defines. Every entity is labeled HARD or SOFT, and enforcement is claimed only for the HARD tier.
 
 - **HARD** is three mechanisms Claude Code runs without the model's cooperation: hooks (PreToolUse deny, Stop block, UserPromptSubmit block), the `permissions` `deny` array in `settings.json`, and subagent tool-scoping.
 - **SOFT** is everything delivered as context: knowledge notes, conventions, skills, output styles. Precept writes the artifact correctly and atomically; it does not claim the model will obey it.
@@ -81,7 +81,7 @@ A correction with no mechanical check ("do not leave stub code") uses a determin
 
 ## Artifact types
 
-Nine types are defined. They populate two of the three pillars, and the self-improving loop authors them: types 1 and 3 through 9 are Processes (how you work), and type 2 is the Entities-and-data catalog (a typed entity catalog is the planned upgrade). Three types are implemented; the other six ride the same Lesson spine and keep/veto gate and differ only in their COMMIT target.
+Nine types are defined, and the self-improving loop authors them. Types 1 and 3 through 9 are process entities (how you work); type 2 populates the data catalog. Three types are implemented; the other six ride the same Lesson spine and keep/veto gate and differ only in their COMMIT target.
 
 | # | Type | Tier | Compiles to | Status |
 |---|------|------|-------------|--------|
