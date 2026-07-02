@@ -1,12 +1,12 @@
 # Precept
 
-Precept is a personal, self-improving platform for agentic AI work. It defines and catalogs two things as typed artifacts: the processes you run with AI (how you work) and the entities and data those processes act on. It improves both continuously, from how you work and from its own reading of best practices, and it always proposes rather than acting silently. Deterministic enforcement is one capability within it: the process artifacts that are mechanically checkable compile into Claude Code hooks that block a disallowed action, not notes that nudge.
+Precept is a personal, self-improving platform for agentic AI work. It captures how you work with an AI agent, and the data those workflows act on, as a catalog of typed, reusable artifacts. Where a workflow is a hard invariant rather than a preference, Precept compiles it into a Claude Code hook that blocks the mistake, instead of context the model can choose to ignore.
 
 ## Three pillars
 
 - **Processes.** The workflows you run with AI, captured as typed artifacts: rules, conventions (`CLAUDE.md` and rules files), skills, agent personas, output styles, slash commands, MCP config, permission profiles. Some carry a HARD, enforced edge (rules, agent personas, permission profiles); the rest steer.
 - **Entities and data.** What those processes act on. Today this is a knowledge catalog for recall; a typed entity catalog is the planned upgrade.
-- **Self-improving.** A detect, review, compile loop authors and refines all of the above, from (a) how you work and (b) Precept's own autonomous learning (reading best practices and the web on its own judgment). It always proposes for human review and never acts silently.
+- **Self-improving.** A detect, review, compile loop drafts and refines these artifacts from how you work, and always proposes them for human review rather than applying them silently. A planned extension has it also draft from its own reading of best practices.
 
 ## Why
 
