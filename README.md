@@ -1,14 +1,12 @@
 # Precept
 
-**Status:** living document · **Owner:** Noa Barzelay · **Last updated:** 2026-07-02
-
 ## Summary
 
-Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction, with background learning planned.
+Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction and background learning.
 
-## Problem
+## Objective
 
-Claude Code is my primary development agent. Working with it produces durable assets: corrections, procedures, preferences, and the knowledge and data my work operates on. Claude Code's native mechanisms hold these as freeform context. Chat history is discarded per session. Memory files accrete into a single document that is loaded whole and followed at the model's discretion, with no compliance guarantee. The result is repeated corrections, no structured catalog of processes or data, and no improvement loop.
+Turn everyday work with an AI agent into a system that compounds: truer to how I work, better catalogued, and lower-effort with every session.
 
 ## Goals and success metrics
 
