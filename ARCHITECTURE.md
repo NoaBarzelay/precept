@@ -70,7 +70,7 @@ Terminology: an **entity** is the catalog record (the typed, reviewable object P
 | `precept/knowledge/store.py` | The one knowledge store over the markdown notes. |
 | `precept/knowledge/index.py` | A derived, rebuildable SQLite FTS index over the notes. |
 | `precept/knowledge/retrieval.py` | Surface relevant knowledge as `additionalContext` at prompt time. |
-| `precept/knowledge/capture.py`, `audit.py`, `ops.py`, `config.py`, `conventions.py`, `frontmatter.py` | Capture new knowledge, audit integrity, scheduled ops, path config, structure rules, frontmatter helpers. |
+| `precept/knowledge/capture.py`, `audit.py`, `ops.py`, `config.py`, `naming_spec.py`, `frontmatter.py` | Capture new knowledge, audit integrity, scheduled ops, path config, filename/structure rules, frontmatter helpers. |
 
 ### Paths, ops, measurement
 | File | Responsibility |
