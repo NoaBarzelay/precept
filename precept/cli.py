@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__, catalog, compile as _compile, paths
-from .models import ArtifactType, Determinism, Status
+from .models import Determinism, Status
 
 app = typer.Typer(add_completion=False, help="Policy-as-code for your coding agent.")
 console = Console()
@@ -88,14 +88,16 @@ def keep(lesson_id: str) -> None:
     n = _compile.compile_all()
     tier = "HARD (enforced)" if le.policies else "soft (steered)"
     console.print(f"[green]Kept[/green] {le.id} -> {tier}. Recompiled {n} active policies.")
-    # A SOFT convention lands as context in a Precept-owned rules file — name it so
-    # "soft (steered)" is concrete, not vague.
-    if le.artifact_type == ArtifactType.CONVENTION and not le.policies:
-        from . import convention
+    # A SOFT artifact lands as context at its writer's commit target — name the file so
+    # "soft (steered)" is concrete, not vague (registry-driven: any artifact type with a
+    # registered writer gets this for free; today that is CONVENTION).
+    if not le.policies:
+        from . import writers as _writers
 
-        dest = convention.target_for(le)
+        w = _writers.for_artifact(le.artifact_type)
+        dest = w.destination_for(le) if w is not None else None
         if dest is not None:
-            console.print(f"  Convention written to [bold]{dest}[/bold] (loaded as context next session).")
+            console.print(f"  {le.artifact_type.value.capitalize()} written to [bold]{dest}[/bold] (loaded as context next session).")
 
 
 @app.command()
@@ -403,14 +405,17 @@ def doctor(strict: bool = typer.Option(False, help="exit nonzero if any hook is 
             raise typer.Exit(1)
     # --- END item 2 -------------------------------------------------------------------
 
-    # Managed SOFT conventions: the Precept-owned `.claude/rules/*.md` files.
-    from . import convention as _convention
+    # Managed artifact hosts: each registered writer reports the files it OWNS (a writer
+    # that manages entries inside a user-shared file, like permissions in settings.json,
+    # owns no whole file and reports none — so today this lists the convention files).
+    from . import writers as _writers
 
-    conv = _convention.managed_files()
-    if conv:
-        console.print(f"\n[bold]Conventions[/bold] ({len(conv)} managed .claude/rules file(s)):")
-        for f in conv:
-            console.print(f"  [green]ok[/green]  {f}  [dim]{'present' if f.exists() else 'MISSING (recompile)'}[/dim]")
+    for w in _writers.WRITERS.values():
+        files = w.managed_files()
+        if files:
+            console.print(f"\n[bold]{w.doctor_title}[/bold] ({len(files)} {w.doctor_detail}):")
+            for f in files:
+                console.print(f"  [green]ok[/green]  {f}  [dim]{'present' if f.exists() else 'MISSING (recompile)'}[/dim]")
 
     # Inference health: are the LLM flows (DETECT/COMPILE/JUDGE) actually reachable? This
     # is the check that would have caught the silent subscription-auth failure. The probe

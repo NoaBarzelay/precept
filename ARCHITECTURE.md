@@ -61,6 +61,7 @@ Terminology: an **entity** is the catalog record (the typed, reviewable object P
 | `precept/install.py` | `precept install` / `uninstall`: wire the hooks into `~/.claude/settings.json` atomically, with exact-inverse removal. |
 | `precept/inference.py` | The pluggable model backend for the AI seams (Claude subscription via CLI, or the SDK, or an injected fake in tests). |
 | `precept/convention.py` | COMMIT target for the convention entity: write a kept convention into a `.claude/rules` file. |
+| `precept/writers.py` | Writer registry over the entity commit targets: one thin adapter per host (conventions, managed permissions), iterated by `compile_all`, `keep`, and `doctor`. |
 | `precept/bootstrap.py` | Phase 0: seed the catalog from the user's existing setup. |
 
 ### Data pillar (knowledge)
@@ -100,6 +101,7 @@ On every guarded tool call and every Stop, Claude Code runs a `precept-hook-*` e
 
 - **Judgment gate** (`judge.py`): an invariant with no mechanical check ("no stub code") runs a model verdict at a deterministic gate. The Stop hook fires every turn (timing never depends on the model); a cheap structured `{ok, reason}` verdict decides at that gate. The verdict prompt is stored on the entity's card (auditable), a relevance gate skips the call on turns where the rule cannot apply, and the path fails open: a missing key or model error never blocks a session.
 - **Host adapter** (`adapters/claude_code.py`): the only module that knows the Claude Code hook contract, so a second host is an adapter, not a rewrite.
+- **Writer registry** (`writers.py`): each entity type's commit target is one writer module plus one registry line (sidecar manifest, idempotent sync, exact-inverse strip), so adding an entity type never touches `compile_all`, `keep`, or `doctor`.
 - **Local-first split** (`paths.py`): the markdown catalog is the source of truth and is sync-safe; the derived SQLite index and policy cache are local-only because SQLite corrupts under cloud sync.
 
 ## Privacy: two planes

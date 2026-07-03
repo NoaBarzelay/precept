@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import catalog, convention, install, paths
+from . import catalog, paths, writers
 from .models import Decision, EnforcementTier, Lesson, Scope, Status
 from .safety import atomic_write_text
 
@@ -50,26 +50,34 @@ def _permission_rules(lesson: Lesson) -> dict[str, list[str]]:
     return rules
 
 
+def aggregate_permission_rules(lessons: list[Lesson]) -> dict[str, list[str]]:
+    """All ACTIVE HARD permission-rule strings across the lessons, bucketed by deny/ask,
+    de-duped and sorted per bucket so the settings write is idempotent. Pure; used by
+    `compile_all` (for the returned count) and by the permissions writer (for the sync)."""
+    rules: dict[str, list[str]] = {"deny": [], "ask": []}
+    for lesson in lessons:
+        lr = _permission_rules(lesson)
+        rules["deny"].extend(lr["deny"])
+        rules["ask"].extend(lr["ask"])
+    return {b: sorted(set(v)) for b, v in rules.items()}
+
+
 def compile_all(lessons: list[Lesson] | None = None) -> int:
-    """Rebuild the policy cache from the catalog AND sync the native permission rules into
-    settings.json. Returns the total count (hook policies + permission rules)."""
+    """Rebuild the policy cache from the catalog AND sync every registered artifact host
+    (native permission rules into settings.json, conventions into Precept-owned
+    `.claude/rules/*.md` files). Returns the total count (hook policies + permission
+    rules; the convention sync is a side effect, not counted)."""
     lessons = catalog.load_all() if lessons is None else lessons
     compiled: list[dict[str, Any]] = []
-    perm_rules: dict[str, list[str]] = {"deny": [], "ask": []}
     for lesson in lessons:
         compiled.extend(_runtime_policies(lesson))
-        lr = _permission_rules(lesson)
-        perm_rules["deny"].extend(lr["deny"])
-        perm_rules["ask"].extend(lr["ask"])
     paths.ensure_dirs()
     import json
 
     atomic_write_text(paths.policies_cache(), json.dumps(compiled, indent=2))
-    # De-dup + deterministic order so the settings write is idempotent.
-    perm_rules = {b: sorted(set(v)) for b, v in perm_rules.items()}
-    install.write_managed_permissions(perm_rules)
-    # CONVENTION artifact (SOFT): sync the ACTIVE conventions into Precept-owned
-    # `.claude/rules/*.md` files (a side effect like the permissions sync; NOT counted in
-    # the returned policy total, which is the HARD hook + permission count).
-    convention.write_managed_rules(lessons)
-    return len(compiled) + sum(len(v) for v in perm_rules.values())
+    # COMMIT: each registered writer syncs its host from the same lessons (one writer
+    # module + one registry line per entity commit target — see writers.py).
+    for writer in writers.WRITERS.values():
+        writer.sync(lessons)
+    n_perms = sum(len(v) for v in aggregate_permission_rules(lessons).values())
+    return len(compiled) + n_perms
