@@ -4,17 +4,15 @@
 
 Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction and background learning.
 
-## Objective
+## Objectives
 
-Turn everyday work with an AI agent into a system that compounds: truer to how I work, better catalogued, and lower-effort with every session.
+**O1. The agent works the way I define.** It follows the processes and standards I set, and the rules that must never be broken are enforced, not just suggested.
+Measured by: how much more often the agent follows the rules with enforcement on versus off (paired trials with a 95% confidence interval, `evals/live.py`); and on a fixed test set, every known violation caught with no correct action wrongly blocked.
 
-## Goals and success metrics
+**O2. My knowledge stays captured and reusable.** The facts and context my work depends on are saved once and kept current, so the agent recalls and reuses them across sessions instead of relearning them.
+Measured by: corrections and knowledge captured, then kept or dismissed by me; stale entries retired automatically; the right knowledge surfaced when it applies.
 
-| # | Goal | Success metric |
-|---|------|----------------|
-| G1 | Keep my agent aligned to how I work | Corrected-behavior delta with enforcement on vs off, measured as paired trials with a 95% CI (`evals/live.py`); deterministic scorecard at 100% recall, 0 false-blocks on the committed golden set |
-| G2 | Catalog my processes and data durably | Every kept correction lands as a typed entity with a defined commit target; the catalog stays current through decay and supersede governance |
-| G3 | Improve continuously with low effort | My workflow is review-only: keep or delete proposals; no hand-authoring of configuration |
+**Constraint: review-only effort.** Precept proposes every change; I keep or dismiss it. I never hand-write the configuration.
 
 ## Non-goals
 
@@ -132,7 +130,7 @@ recall 100% (10/10)   false-block rate 0% (0/15)
 
 The claim is bounded: of the violations it has a rule for, it blocks all of them and blocks no compliant call.
 
-**Tier 2, paired behavior delta.** Whether enforcement keeps the agent aligned (G1) is a live measurement, reported as a paired before/after with a 95% CI, because agentic-eval infrastructure noise alone shifts scores by several points between identical runs. The reporting harness is built; live wiring is the next milestone.
+**Tier 2, paired behavior delta.** Whether enforcement keeps the agent working the way I define (O1) is a live measurement, reported as a paired before/after with a 95% CI, because agentic-eval infrastructure noise alone shifts scores by several points between identical runs. The reporting harness is built; live wiring is the next milestone.
 
 ## Milestones and status
 
