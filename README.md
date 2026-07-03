@@ -4,13 +4,15 @@
 
 Precept is my personal, self-improving platform for agentic AI processes and data cataloging. It continuously learns from my sessions to improve its data catalog, its defined entities (rules, skills, agent personas, and more), and its processes, through explicit direction and background learning.
 
-## Objectives
+## Goal and objectives
 
-**O1. The agent works the way I define.** It follows the processes and standards I set, and the rules that must never be broken are enforced, not just suggested.
-Measured by: how much more often the agent follows the rules with enforcement on versus off (paired trials with a 95% confidence interval, `evals/live.py`); and on a fixed test set, every known violation caught with no correct action wrongly blocked.
+**Goal.** A personal platform that, on its own, learns and keeps improving both how I want my agentic AI work done and the knowledge my work depends on, so the two compound across sessions instead of resetting each time.
 
-**O2. My knowledge stays captured and reusable.** The facts and context my work depends on are saved once and kept current, so the agent recalls and reuses them across sessions instead of relearning them.
-Measured by: corrections and knowledge captured, then kept or dismissed by me; stale entries retired automatically; the right knowledge surfaced when it applies.
+**O1.** The platform's agentic processes and output quality improve with each session, from my explicit direction and from the implicit signals in every interaction: my style, corrections, questions, and requests.
+Key result: anything I convey in a session (a correction, a preference, a way of working) becomes embedded automatically in how the platform's agents operate and stays that way, so I do not have to convey it again.
+
+**O2.** The knowledge the platform comes across while working compounds and stays current with each session, and is retrieved for both me and the agentic processes whenever it applies.
+Key result: any information the platform has come across before is retrieved in relevant session contexts and is accessible for me to look up, so it does not have to be re-learned in new sessions.
 
 **Constraint: review-only effort.** Precept proposes every change; I keep or dismiss it. I never hand-write the configuration.
 
@@ -130,7 +132,7 @@ recall 100% (10/10)   false-block rate 0% (0/15)
 
 The claim is bounded: of the violations it has a rule for, it blocks all of them and blocks no compliant call.
 
-**Tier 2, paired behavior delta.** Whether enforcement keeps the agent working the way I define (O1) is a live measurement, reported as a paired before/after with a 95% CI, because agentic-eval infrastructure noise alone shifts scores by several points between identical runs. The reporting harness is built; live wiring is the next milestone.
+**Tier 2, paired behavior delta.** Whether enforcement measurably improves the agent's adherence to how I want my work done (in support of O1) is a live measurement, reported as a paired before/after with a 95% CI, because agentic-eval infrastructure noise alone shifts scores by several points between identical runs. The reporting harness is built; live wiring is the next milestone.
 
 ## Milestones and status
 
