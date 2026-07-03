@@ -16,7 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.13"]
+mcp = ["mcp>=1.2,<2"]   # `precept mcp`: stdio server over the catalog + review gate
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.13", "mcp>=1.2,<2"]
 
 [project.scripts]
 precept = "precept.cli:app"

@@ -36,3 +36,8 @@ Order is set by the catalog itself: whichever correction type shows up most in r
 ## Portability (host-drift)
 
 Precept targets Claude Code's hook and settings contract today, behind an adapter (`adapters/`). The contract can change, and other agent hosts are starting to expose enforcement surfaces. Plan: keep the catalog and the HARD/SOFT model host-agnostic, and let the adapter compile the same lessons to other hosts as they expose deny/gate mechanisms. The typed catalog is the durable asset; the compile target is swappable.
+
+## Distribution
+
+- **MCP server over the catalog and review gate.** *Shipped.* `precept mcp` runs a local stdio MCP server (`precept/mcp_server.py`) with four tools (catalog_search, entity_show, review_pending, review_decide), so any local MCP client can drive the human-in-the-loop review conversationally. Optional extra (`precept[mcp]`); the core stays at four runtime dependencies. Publishing to the official MCP registry is a later step.
+- **Claude Code plugin packaging.** *Planned.* Bundle the hooks and the MCP server into one versioned plugin so install becomes `claude plugin install precept` instead of settings mutation.

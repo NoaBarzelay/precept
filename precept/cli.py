@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from . import __version__, catalog, compile as _compile, paths
-from .models import Determinism, Status
 
 app = typer.Typer(add_completion=False, help="Policy-as-code for your coding agent.")
 console = Console()
@@ -73,31 +73,17 @@ def why(lesson_id: str) -> None:
 def keep(lesson_id: str) -> None:
     """Keep a pending lesson -> ACTIVE. Deterministic ones are compiled into an
     enforcing policy (matcher synthesis); the rest stay soft."""
-    le = _find(lesson_id)
-    le.status = Status.ACTIVE
-    le.signals.human_kept = True
-    le.needs_review = False  # item 3: the user has now answered the proactive prompt
-    if not le.policies and le.determinism != Determinism.STYLISTIC:
-        from . import synthesize  # lazy: only the keep path needs the SDK
+    from . import review_actions
 
-        try:
-            synthesize.compile_lesson(le)
-        except Exception:
-            pass  # fail closed: kept as soft, no junk policy
-    catalog.write(le)
-    n = _compile.compile_all()
-    tier = "HARD (enforced)" if le.policies else "soft (steered)"
-    console.print(f"[green]Kept[/green] {le.id} -> {tier}. Recompiled {n} active policies.")
+    le = _find(lesson_id)
+    res = review_actions.keep_lesson(le)  # the shared review-gate core (also used by MCP)
+    tier = "HARD (enforced)" if res["tier"] == "hard" else "soft (steered)"
+    console.print(f"[green]Kept[/green] {le.id} -> {tier}. Recompiled {res['recompiled']} active policies.")
     # A SOFT artifact lands as context at its writer's commit target — name the file so
     # "soft (steered)" is concrete, not vague (registry-driven: any artifact type with a
     # registered writer gets this for free; today that is CONVENTION).
-    if not le.policies:
-        from . import writers as _writers
-
-        w = _writers.for_artifact(le.artifact_type)
-        dest = w.destination_for(le) if w is not None else None
-        if dest is not None:
-            console.print(f"  {le.artifact_type.value.capitalize()} written to [bold]{dest}[/bold] (loaded as context next session).")
+    if res["destination"] is not None:
+        console.print(f"  {le.artifact_type.value.capitalize()} written to [bold]{res['destination']}[/bold] (loaded as context next session).")
 
 
 @app.command()
@@ -122,12 +108,11 @@ def delete(lesson_id: str, hard: bool = typer.Option(False, help="remove the car
     le = _find(lesson_id)
     if hard:
         catalog.card_path(le.id).unlink(missing_ok=True)
+        n = _compile.compile_all()
     else:
-        le.status = Status.ARCHIVED
-        le.signals.human_kept = False
-        le.needs_review = False  # item 3: answered (vetoed)
-        catalog.write(le)
-    n = _compile.compile_all()
+        from . import review_actions
+
+        n = cast(int, review_actions.veto_lesson(le)["recompiled"])  # shared core (MCP too)
     console.print(f"[yellow]{'Removed' if hard else 'Archived'}[/yellow] {le.id}. Recompiled {n} active policies.")
 
 
@@ -645,6 +630,21 @@ def uninstall() -> None:
 
     p = _install.uninstall_from_file()
     console.print(f"[yellow]Uninstalled[/yellow] Precept hooks from {p}.")
+
+
+@app.command()
+def mcp() -> None:
+    """Run the stdio MCP server over the catalog and review gate (needs `precept[mcp]`).
+
+    Exposes four tools (catalog_search, entity_show, review_pending, review_decide) so a
+    local MCP client can drive the review gate conversationally. Local/stdio only."""
+    from . import mcp_server
+
+    try:
+        mcp_server.serve()
+    except ImportError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
 
 
 # ---------------------------------------------------------------------------

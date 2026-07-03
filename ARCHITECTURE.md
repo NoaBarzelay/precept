@@ -62,6 +62,8 @@ Terminology: an **entity** is the catalog record (the typed, reviewable object P
 | `precept/inference.py` | The pluggable model backend for the AI seams (Claude subscription via CLI, or the SDK, or an injected fake in tests). |
 | `precept/convention.py` | COMMIT target for the convention entity: write a kept convention into a `.claude/rules` file. |
 | `precept/writers.py` | Writer registry over the entity commit targets: one thin adapter per host (conventions, managed permissions), iterated by `compile_all`, `keep`, and `doctor`. |
+| `precept/review_actions.py` | The keep/veto core, shared by `precept keep`/`delete` and the MCP `review_decide` tool so the review gate is applied identically. |
+| `precept/mcp_server.py` | An optional stdio MCP server (four tools over the catalog + review gate) so a local MCP client can drive review conversationally. Local-only; needs the `mcp` extra. |
 | `precept/bootstrap.py` | Phase 0: seed the catalog from the user's existing setup. |
 
 ### Data pillar (knowledge)

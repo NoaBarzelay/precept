@@ -95,7 +95,8 @@ Status: **built** (implemented and tested), **partial** (subset implemented), **
 | R3.1 | Candidate entities are detected from session transcripts, abstain-biased | built |
 | R3.2 | Nothing takes effect without an explicit keep | built |
 | R3.3 | Governance keeps the catalog current: decay, supersede, conflict detection | built |
-| R3.4 | Background learning drafts proposals from external best practices | planned |
+| R3.4 | The review gate is drivable from any local MCP client (catalog search, entity show, review pending/decide) | built |
+| R3.5 | Background learning drafts proposals from external best practices | planned |
 
 ### R4: Enforcement
 
@@ -171,6 +172,7 @@ precept list                    # show the catalog
 precept keep <id>               # the review gate: keep -> active
 precept evals                   # the deterministic scorecard
 precept doctor                  # resolved paths, sync-safety check, hook reachability
+precept mcp                     # stdio MCP server over the catalog + review gate (needs precept[mcp])
 ```
 
 ## License
