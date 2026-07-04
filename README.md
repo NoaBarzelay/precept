@@ -8,17 +8,17 @@ Coding agents are by default mostly stateless: they do not retain information be
 
 A personal platform that, on its own, learns and keeps improving both how I want my agentic AI work done and the knowledge my work depends on, so the two compound across sessions instead of resetting each time.
 
-## Objectives and key results
+## Objectives and Key Results
 
 **O1.** The platform's agentic processes and output quality improve with each session, from my explicit direction and from the implicit signals in every interaction: my style, corrections, questions, and requests.
-- Key result: anything I convey in a session (a correction, a preference, a way of working) becomes embedded automatically in how the platform's agents operate and stays that way, so I do not have to convey it again.
-- Key result: what it embeds is what I meant, so its learnings hold up instead of being overridden.
+- **Key result:** anything I convey in a session (a correction, a preference, a way of working) becomes embedded automatically in how the platform's agents operate and stays that way, so I do not have to convey it again.
+- **Key result:** what it embeds is what I meant, so its learnings hold up instead of being overridden.
 
 **O2.** The knowledge the platform comes across while working compounds and stays current with each session, and is retrieved for both me and the agentic processes whenever it applies.
-- Key result: any information the platform has come across before is retrieved in relevant session contexts, so it does not have to be re-learned in new sessions.
-- Key result: what surfaces is current, not stale or superseded.
+- **Key result:** any information the platform has come across before is retrieved in relevant session contexts, so it does not have to be re-learned in new sessions.
+- **Key result:** what surfaces is current, not stale or superseded.
 
-## User stories
+## User Stories
 
 The user is me. Each is a situation, the need, and the outcome.
 
@@ -28,7 +28,7 @@ The user is me. Each is a situation, the need, and the outcome.
 - When Precept wants to change how my agent behaves, I want to see the correction it came from and approve it, so nothing shifts without me.
 - When a preference goes stale, I want it retired on its own, so the catalog stays current instead of accreting.
 
-## Non-goals
+## Non-Goals
 
 The goal (a platform that keeps improving how my agentic AI work gets done and the knowledge it depends on) makes several adjacent capabilities look in scope. They are not. Each line is a boundary I chose, with its reason.
 
@@ -44,7 +44,7 @@ What Precept relies on that I do not control. For each I note the consequence if
 1. Claude Code extension contract (the largest one, and a live risk). Precept runs on my local machine as extensions to Claude Code: five hooks and a CLI wired into ~/.claude, depending on the whole extension contract (the hook lifecycle of Stop, SessionEnd, SessionStart, UserPromptSubmit, PreToolUse, the exit-code and JSON protocol, permission precedence of deny over ask over allow, settings.json, and the .claude/ file layout). Anthropic defines this contract, not me, and it has changed before. If a release alters the hook protocol or the file layout, enforcement or the learning loop can break until I update Precept.
 2. Inference for the learning loop. Detection and proposal generation need model inference, selected by the PRECEPT_INFERENCE environment variable: the API-key backend (the Anthropic SDK) by default, or my Claude subscription through the local claude CLI, which my own setup pins on. The subscription quota is shared with my interactive Claude Code use, so background detection competes with my foreground work. If no backend is reachable the learning loop cannot run; by the fail-open design it degrades the loop, never blocks a session. The enforcement runtime uses no model and does not carry this dependency.
 
-## Functional requirements
+## Functional Requirements
 
 Each requirement is an observable behavior with a status. Status: **built** (implemented and covered by tests), **partial** (a subset works, the rest is specified), **designed** (specified against the verified host contract, not implemented), **planned** (roadmapped, not specified). Only 3 of the 9 entity types are built; the table says so line by line, and nothing below is marked built that a reader cannot exercise from a clone.
 
@@ -81,7 +81,7 @@ R1.2 is the honest center of this section. Six of the nine rows are not yet real
 | R2.2 | injects relevant stored knowledge into a session at prompt time, selected by relevance | built |
 | R2.3 | catalogs the entities my work operates on (projects, domains, people) as typed records, not freeform notes | planned |
 
-R2.2 is keyword-first retrieval today. Whether it needs semantic (embedding) retrieval is left open and gated on a measurement, not assumed (see Open questions).
+R2.2 is keyword-first retrieval today. Whether it needs semantic (embedding) retrieval is left open and gated on a measurement, not assumed (see Open Questions).
 
 **R3: Self-improving.** A loop that reads my sessions and proposes refinements to the processes (R1) and the data (R2) for my review.
 
@@ -104,7 +104,7 @@ R3.2 is the constraint the whole platform is built around: the system proposes, 
 
 R4 is a supporting capability, not an objective: it is how a proven-invariant preference is made to stick for the cases where steering is not enough. Most entities never reach R4; over-enforcement produces false blocks, and a false block gets a tool turned off.
 
-## Non-functional requirements
+## Non-Functional Requirements
 
 These are the properties that have to hold for a system that learns from my sessions, rewrites my agent's configuration, and runs inside my coding tool to be one I can leave running unattended. Each is stated as a property with a verification method and a status (built, partial, designed, planned). The frame is ISO/IEC 25010:2023; the two attributes it does not cover well for a self-improving agent (auditability and accountability) are stated explicitly rather than folded into security.
 
@@ -123,7 +123,7 @@ These are the properties that have to hold for a system that learns from my sess
 
 A note on what is deliberately absent. There is no availability SLA, no horizontal-scalability target, and no multi-tenant isolation requirement, because there is one user on one machine and the system is allowed to be absent (it fails open by design, N1). Adding those would be answering a question nobody asked. The one attribute I would add before any other user touched this is a catalog schema-version and migration guarantee: today the reversibility guarantee (N8) covers a clean uninstall but not forward-migration of a catalog that has accumulated for months if the card format changes. I name it here as a known gap rather than imply it is handled.
 
-## Example workflows
+## Example Workflows
 
 Illustrative, not screenshots. Each shows the same loop: something enters from a session, I review it, and it takes effect later.
 
@@ -201,7 +201,7 @@ I order this by dependency and priority, not by date. The rule I am following: h
 
 Each phase below is defined by an outcome, not a ticket list. Confidence is highest for Now and decreases across Next and Later; Later is directional and will reorder as my real usage tells me which corrections matter most.
 
-### Now (built)
+### Now (Built)
 
 Outcome: the core loop runs end to end, and its one measurable guarantee is enforced in CI.
 
@@ -212,7 +212,7 @@ Outcome: the core loop runs end to end, and its one measurable guarantee is enfo
 
 This is the smallest version of Objective O1 (direction improving across sessions) that actually holds together. It is real, but it is narrow: it improves behavior only for the correction types the three built entity types cover, and the only property proven automatically today is that enforcement fires.
 
-### Next (in progress)
+### Next (In Progress)
 
 Outcome: I can measure that the loop actually changes behavior, and know what the learning flows cost.
 
@@ -223,7 +223,7 @@ Everything in Next hardens the loop that already exists. Nothing here widens sco
 
 The before-and-after eval turns the loop's core unproven assumption (that enforcement improves behavior, not just fires) into a measured property. Widening to more entity types or adding autonomous learning before that check exists would scale an unverified mechanism. I would rather scale a measured one.
 
-### Later (planned, not built)
+### Later (Planned, Not Built)
 
 Outcome: the system compounds knowledge as well as direction (Objective O2), proposes its own improvements under the same review gate, and covers the correction types I actually hit.
 
@@ -235,7 +235,7 @@ These are directional. I am naming them honestly as not built, and the order wit
 
 The through-line: Now is a working loop, Next makes it measured and affordable, Later makes it broad and partly self-driving. I widen scope only after the foundation under it is one I have verified, not one I am hoping holds.
 
-## Open questions
+## Open Questions
 
 These are unresolved design decisions, not planned work. Each names the choice, the options, and the specific evidence or gate that would settle it. Until then, the shipped default is stated first.
 
@@ -244,7 +244,7 @@ These are unresolved design decisions, not planned work. Each names the choice, 
 3. Background-learning trust: is the review gate sufficient at volume? When Precept reads external best practices and proposes entities, every proposal passes my review, so nothing enters unreviewed. The open question is whether that holds at volume: many proposals can each pass review yet still degrade the catalog through redundancy or drift. The decision is what constraint sits alongside per-item review (a proposal budget, a dedup or novelty check, a staging area).
 4. Coverage: how do I measure the corrections it missed, including the ones it never flagged? Logging the candidates it declined is biased and expensive: it cannot see the misses it never recognized. Instead, coverage is a periodic audit. Take a random sample of full session transcripts (already on disk), re-label every correction in them with an exhaustive second pass (a lower detection threshold, or a stronger adjudicator model), and measure the fraction the production detector captured. Ground truth comes from the transcript, not from what the detector noticed, so the misses it never flagged are counted. Open: the sample size, the cadence, and the recall bar that counts as healthy.
 
-## Related documents
+## Related Documents
 
 This README is the product spec and the entry point, kept deliberately high level. The documents below are the deeper design and decision records. Each is the single source of truth for its topic, so this spec points to it rather than restating it.
 
