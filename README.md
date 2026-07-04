@@ -2,7 +2,7 @@
 
 ## Context
 
-When I work with an agentic coding assistant, every session starts cold: the way I want my work done and the knowledge my work depends on both reset when the session ends. So each time I re-explain preferences I have already stated and re-supply facts I have already given, and the effort I spent teaching the assistant is spent again rather than compounding. Precept is the system I built to keep both from resetting.
+Coding agents are by default mostly stateless: they do not retain information beyond their context window, and learnings do not transfer from session to session. Without a layer that compiles how you work and a layer that stores what you know, the effort does not compound across sessions. Precept is the process and data layer I built so both compound across sessions.
 
 ## Goal
 
