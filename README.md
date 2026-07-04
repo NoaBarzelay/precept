@@ -8,10 +8,6 @@ Coding agents are by default mostly stateless: they do not retain information be
 
 A personal platform that, on its own, learns and keeps improving both how I want my agentic AI work done and the knowledge my work depends on, so the two compound across sessions instead of resetting each time.
 
-**Key assumption.** The whole platform rests on one bet: that my ordinary session activity (corrections, requests, discussion, style) carries enough signal to learn my preferences and the knowledge my work depends on, without my authoring training input explicitly. If that is false, proposal quality is low and nothing compounds.
-
-**Operating principle: I review, I do not author.** Precept proposes every change; I keep it or dismiss it. I never hand-write the configuration.
-
 ## Objectives and key results
 
 **O1.** The platform's agentic processes and output quality improve with each session, from my explicit direction and from the implicit signals in every interaction: my style, corrections, questions, and requests.
