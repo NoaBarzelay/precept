@@ -232,6 +232,7 @@ These are directional. I am naming them honestly as not built, and the order wit
 - Typed data catalog. The projects, domains, and people my work operates on, as first-class typed entities. This is the backbone for O2 (knowledge that compounds and is retrieved when it applies) and it does not exist yet.
 - Background learning. The system drafts improvement proposals from external best practices on its own, gated by the exact same human review that governs corrections today. Autonomy is deferred on purpose: I only want the system proposing changes once the review gate it depends on is proven.
 - The remaining entity types. The other 6 of 9, added in the order the correction types show up most in my real usage, so I build coverage where it pays off rather than for completeness.
+- Agentic flows. Govern the workflow, not just the action. Today a rule blocks one call and a convention steers one file; the order above that is the repeatable multi-step loop I run with agents (for example, research fan-out, then adversarial verify, then synthesize). Precept would learn a flow I repeat, scaffold the agent through it, and enforce its structure at the Stop gate, extending today's single-call and trajectory checks from one action to a whole sequence.
 
 The through-line: Now is a working loop, Next makes it measured and affordable, Later makes it broad and partly self-driving. I widen scope only after the foundation under it is one I have verified, not one I am hoping holds.
 
