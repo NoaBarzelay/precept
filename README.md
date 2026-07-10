@@ -25,7 +25,7 @@ As an engineer who runs most of my work through coding agents:
 - I want to stop re-teaching the agent things I have already told it, so that my time goes to the task instead of to repeating myself.
 - I want the standards I care about to actually hold in the agent's work, so that I can trust its output instead of re-checking for mistakes I have already flagged.
 - I want the agent to know the facts my work depends on, my stack, my conventions, my projects, so that I do not re-explain my setup every session.
-- I want to pull up everything the platform knows and build on it, so that my accumulated knowledge keeps compounding, not just feeding the agent behind the scenes.
+- I want to access and build on everything the platform has learned from my work, so that my accumulated knowledge is a resource of my own, not only context the agent draws on.
 - I want to stay in control of how my agents behave, so that my setup does not drift or change without me.
 - I want the agent to reflect how I work now, so that habits I have moved past stop showing up.
 
