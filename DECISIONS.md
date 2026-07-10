@@ -3,9 +3,9 @@
 This is the in-repo summary of the load-bearing engineering decisions, with the *why*.
 
 ## Language & shape
-- **Python**, local-first CLI + hooks (not a web app). Runtime chosen by product center-of-gravity. The
-  product is a local enforcement daemon + catalog + eval harness, where Python is
-  the lingua franca (Anthropic SDK, Claude Code hook examples, eval tooling).
+- Local-first CLI + hooks (not a web app): a local enforcement daemon + catalog + eval harness.
+- **Decided target: TypeScript on Bun.** Best-in-class for a Claude Code extension as one language: host-native (Claude Code is itself Node/TS), the fastest startup of the interpreted runtimes (Bun 8 to 15 ms), single-binary distribution (kills the venv/pipx drift), built-in SQLite for the catalog, and a first-class AI SDK (Anthropic TS SDK + Vercel AI SDK, with Zod for model-output validation). The one real risk is Bun's youth; Node is the drop-in fallback. Full analysis, the July 2026 best-in-class scan, the first-principles characteristic breakdown, the scorecard, and the honest dissent are in [docs/LANGUAGE.md](docs/LANGUAGE.md).
+- **Current implementation: Python**, and this repo is Python until a migration lands (not started). Python is the close second, strongest on the eval and statistics tooling (the number-one signal), which is the heaviest thing a migration has to port. Honest status: Python now, TypeScript on Bun next.
 
 ## Enforcement (the wedge)
 - Only **hooks + permission-deny + subagent tool-scoping** are HARD; everything else

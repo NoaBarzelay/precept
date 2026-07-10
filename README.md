@@ -253,6 +253,7 @@ This README is the product spec and the entry point, kept deliberately high leve
 - [docs/ARTIFACTS.md](docs/ARTIFACTS.md): the per-entity specification and status tracker for the nine entity types. Go here for what each entity is, its schema, and whether it is built, in progress, or planned.
 - [DECISIONS.md](DECISIONS.md): the load-bearing engineering decisions and their reasons. Go here to understand why the system is built the way it is before proposing a change.
 - [docs/ANTHROPIC-CONFORMANCE.md](docs/ANTHROPIC-CONFORMANCE.md): a self-audit against Anthropic's published agent-rules and memory guidance, including the one open retrieval gap.
+- [docs/LANGUAGE.md](docs/LANGUAGE.md): the language decision (TypeScript on Bun as the target, Python today), with the July 2026 best-in-class scan, the first-principles characteristic breakdown, and the honest tradeoff against Python.
 
 ## Install
 
