@@ -20,13 +20,14 @@ A personal platform that, on its own, learns and keeps improving both how I want
 
 ## User Stories
 
-The user is me. Each is a situation, the need, and the outcome.
+As an engineer who runs most of my work through coding agents:
 
-- When I correct the agent and hit the same case in a later session, I want the correction already in force, so I am not re-teaching it.
-- When a rule must never be broken, I want it blocked at the point of action, not just discouraged, so I am not the one policing it.
-- When I give the agent a fact my work depends on, I want it back when it next applies, so I am not re-explaining my own setup.
-- When Precept wants to change how my agent behaves, I want to see the correction it came from and approve it, so nothing shifts without me.
-- When a preference goes stale, I want it retired on its own, so the catalog stays current instead of accreting.
+- I want to stop re-teaching the agent things I have already told it, so that my time goes to the task instead of to repeating myself.
+- I want the standards I care about to actually hold in the agent's work, so that I can trust its output instead of re-checking for mistakes I have already flagged.
+- I want the agent to know the facts my work depends on, my stack, my conventions, my projects, so that I do not re-explain my setup every session.
+- I want to pull up everything the platform knows and build on it, so that my accumulated knowledge keeps compounding, not just feeding the agent behind the scenes.
+- I want to stay in control of how my agents behave, so that my setup does not drift or change without me.
+- I want the agent to reflect how I work now, so that habits I have moved past stop showing up.
 
 ## Non-Goals
 
