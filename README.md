@@ -41,11 +41,7 @@ The goal makes several adjacent capabilities look in scope. They are not. Each l
    - *Why:* Precept runs on Claude through Claude Code; training would mean self-hosting an open-weights model and trading away frontier capability. Precept is also cheaper and reversible, versus the baked-into-weights option.
 4. **Not model- or tool-agnostic.** Precept is built on Claude Code specifically: its hooks, its CLAUDE.md contract, its permission model. Portability to other agents is out of scope.
    - *Why:* Precept enforces and injects context through Claude Code's hook, permission, and memory contracts, which have no cross-agent equivalent; a portable version would fall back to a lowest common denominator that cannot enforce.
-5. **Not a vector or RAG knowledge base, today.** Retrieval is markdown cards matched structurally and by keyword, not embeddings.
-   - *Why:* a local vector layer for the fuzzy subset is on the roadmap, so this is a not-yet, not a never.
-6. **Not a security or anti-abuse guardrail.** The enforcement layer holds me to my own conventions, not against a malicious actor or prompt injection.
-   - *Why:* the threat model is my own drift, not an adversary.
-7. **Not productized for distribution.** This is my own setup, published as-is: no packaging, onboarding, or multi-user support. It is public to be read and copied from, a reference to borrow, not a product to install.
+5. **Not productized for distribution.** This is my own setup, published as-is: no packaging, onboarding, or multi-user support. It is public to be read and copied from, a reference to borrow, not a product to install.
    - *Why:* offering it as a product means owning packaging, support, and a roadmap shaped by other users' needs, which would pull it away from my own workflow; publishing the source lets anyone copy what they want without that.
 
 ## Dependencies
