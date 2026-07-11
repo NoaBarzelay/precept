@@ -31,12 +31,22 @@ As an engineer who runs most of my work through coding agents:
 
 ## Non-Goals
 
-The goal (a platform that keeps improving how my agentic AI work gets done and the knowledge it depends on) makes several adjacent capabilities look in scope. They are not. Each line is a boundary I chose, with its reason.
+The goal makes several adjacent capabilities look in scope. They are not. Each line is a boundary I chose.
 
-1. Not a replacement for Claude Code's native memory. Precept runs alongside native memory, it does not supersede it. Native memory self-writes freeform notes with no review step and no compliance guarantee. Precept is the governed layer on top: typed entities, an explicit keep/dismiss gate, lifecycle governance (decay, supersede, conflict detection), and compilation of the invariant subset into deterministic enforcement.
-2. Not autonomous. Nothing enters the catalog or takes effect without my explicit approval. Precept proposes every change; I keep it or I dismiss it.
-3. Not a system that enforces everything. Most entities steer behavior; only true invariants are hard-enforced. Over-enforcement produces false blocks, and a tool that false-blocks gets turned off, which forfeits the whole capability.
-4. Not a general product. This is my own setup, published, not something built for other users. There is no packaging, onboarding, or multi-user support, because generality would trade away the personalization to my workflow that is the entire point.
+1. **Not a replacement for Claude Code's native memory.** Native memory is Claude Code's built-in recall: the CLAUDE.md files I write plus auto memory, where Claude self-writes freeform notes into context each session. It captures freely but leaves what it captures as unmanaged context, with no review, structure, upkeep, or ability to enforce. Precept is the governed layer over that same knowledge: reviewed before it enters, structured, kept current, and for the invariant subset, enforced.
+   - *Why:* they are different layers. Native memory captures and recalls; Precept governs what is kept and enforces the invariant subset, so it builds on native memory rather than duplicating it.
+2. **Not hard enforcement of every rule it learns.** Most conventions Precept learns are injected as context that steers behavior (soft); only true invariants compile into a deterministic block (hard).
+   - *Why:* I keep the hard set small on purpose, because over-enforcement produces false blocks, and a tool that false-blocks gets turned off, forfeiting the capability.
+3. **Not model training or fine-tuning.** Self-improvement in the context of Precept means the knowledge base and enforcement layer on top of the model improve over time, not the model's weights.
+   - *Why:* Precept runs on Claude through Claude Code; training would mean self-hosting an open-weights model and trading away frontier capability. Precept is also cheaper and reversible, versus the baked-into-weights option.
+4. **Not model- or tool-agnostic.** Precept is built on Claude Code specifically: its hooks, its CLAUDE.md contract, its permission model. Portability to other agents is out of scope.
+   - *Why:* Precept enforces and injects context through Claude Code's hook, permission, and memory contracts, which have no cross-agent equivalent; a portable version would fall back to a lowest common denominator that cannot enforce.
+5. **Not a vector or RAG knowledge base, today.** Retrieval is markdown cards matched structurally and by keyword, not embeddings.
+   - *Why:* a local vector layer for the fuzzy subset is on the roadmap, so this is a not-yet, not a never.
+6. **Not a security or anti-abuse guardrail.** The enforcement layer holds me to my own conventions, not against a malicious actor or prompt injection.
+   - *Why:* the threat model is my own drift, not an adversary.
+7. **Not productized for distribution.** This is my own setup, published as-is: no packaging, onboarding, or multi-user support. It is public to be read and copied from, a reference to borrow, not a product to install.
+   - *Why:* offering it as a product means owning packaging, support, and a roadmap shaped by other users' needs, which would pull it away from my own workflow; publishing the source lets anyone copy what they want without that.
 
 ## Dependencies
 
