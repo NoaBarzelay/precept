@@ -31,7 +31,7 @@ As an engineer who runs most of my work through coding agents:
 
 ## Non-Goals
 
-The goal (a platform that keeps improving how my agentic AI work gets done and the knowledge it depends on) makes several adjacent capabilities look in scope. They are not. Each line is a boundary I chose, with its reason.
+The goal (a platform that keeps improving how my agentic AI work gets done and the knowledge it depends on) makes several adjacent capabilities seem potentially in scope. Each line is a boundary I chose, with its reason.
 
 1. **Not a replacement for Claude Code's native memory.** Native memory is Claude Code's built-in recall: the CLAUDE.md files I write plus auto memory, where Claude self-writes freeform notes into context each session. It captures freely but leaves what it captures as unmanaged context, with no review, structure, upkeep, or ability to enforce. Precept is the governed layer over that same knowledge: reviewed before it enters, structured, kept current, and for the invariant subset, enforced.
    - *Why:* they are different layers. Native memory captures and recalls; Precept governs what is kept and enforces the invariant subset, so it builds on native memory rather than duplicating it.
