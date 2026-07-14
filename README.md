@@ -180,8 +180,6 @@ A note on what is deliberately absent. There is no availability SLA, no horizont
 
 ## Example Workflows
 
-Illustrative, not screenshots. Each shows the same loop: something enters from a session, I review it, and it takes effect later.
-
 **1. A rule set once, enforced from then on.** I keep reaching for `pip` in a `uv` project and correcting the agent. Precept catches the correction from the transcript:
 
 ```
