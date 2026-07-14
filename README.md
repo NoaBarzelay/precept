@@ -266,29 +266,34 @@ Claude  Staging runs on Render (prod is Fly.io, acme-api), so I'm checking
 
 *Payoff:* two weeks on, I did not re-explain where staging runs. The fact surfaced on its own because the topic was relevant.
 
-**4. A preference I change replaces the one it outdates.**
-*Serves O2 · R3.3*
+**4. Research the agent runs once comes back when it is relevant.**
+*Serves O2 · R2.1, R2.2*
 
-Session 1 · web-app
-
-```
-You     I moved all tests to a top-level tests/ tree. put new tests there now,
-        not next to the source
-Claude  Understood.
-        [Precept] This reverses a convention you set earlier
-        (May: tests live next to the source). Replace it with the new one?
-You     yes, replace it
-Claude  Done. The earlier convention is retired; new tests go under tests/.
-```
-
-Session 2 · web-app · fresh session
+Session 1 · acme-api
 
 ```
-You     scaffold tests for the billing module
-Claude  Added tests under the tests/ tree: tests/billing/test_billing.py
+You     before we add tool calling, research the current prompt-injection
+        defenses for agent tool inputs and lay out the options
+Claude  Here are the main defenses, with tradeoffs:
+          - schema-validate and allow-list every tool input
+          - quarantine untrusted content: pass it as data, never merge it
+            into the instruction
+          - tag provenance so downstream steps know what is untrusted
+        ...
+        [Precept] Saved this to knowledge: prompt-injection-defenses
+        (the options and tradeoffs the agent gathered this session).
 ```
 
-*Payoff:* the outdated convention did not linger and mislead the new session. What surfaces reflects how I work now, not how I worked in May.
+Session 2 · acme-api · three weeks later, building the tool layer
+
+```
+You     add the handler that feeds fetched web content into the tool call
+Claude  Precept brought back our earlier research on prompt-injection defenses.
+        Applying the pattern we settled on: the fetched text goes in as data,
+        never merged into the instruction, and is schema-validated first.
+```
+
+*Payoff:* the investigation the agent ran weeks ago was not thrown away. It came back on its own when I built the feature it informed, so the agent worked from it instead of researching the same thing twice.
 
 ## KPIs
 
