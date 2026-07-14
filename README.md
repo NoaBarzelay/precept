@@ -181,7 +181,7 @@ A note on what is deliberately absent. There is no availability SLA, no horizont
 
 ## Usage Examples
 
-Four representative sessions, written for the experience I am building toward, not today's implementation. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then shaping a later session on its own. The tag names the objective each serves. Between them they cover both objectives: the processes I want my agent to follow (O1) and the knowledge I want it to keep and recall (O2).
+Four representative sessions, written for the experience I am building toward, not today's implementation. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then shaping a later session on its own. The tag names the objective each serves. The first two cover process learning (O1), once from an explicit correction and once from a change I make silently; the last two cover knowledge (O2), recalled when relevant and kept current as my setup changes.
 
 **1. A correction I give once keeps holding.**
 *Serves O1 · R3.2, R4.1*
@@ -211,20 +211,20 @@ Claude  Reran with uv. Added stripe to the project.
 
 *Payoff:* the mistake I corrected once is caught on its own in a new session, before it runs, without me watching for it.
 
-**2. A standard I set once is followed on its own.**
-*Serves O1 · R3.2, R1.4*
+**2. An edit I make myself becomes a standing convention.**
+*Serves O1 · R3.1, R3.2*
 
 Session 1 · acme-api
 
 ```
-You     review the new /orders endpoint before I merge
-Claude  It returns a raw dict:  return {"id": o.id, "status": o.status}
-You     we always return through the `envelope()` helper so every response
-        has one shape. fix it, and remember it
-Claude  Changed it to:  return envelope({"id": o.id, "status": o.status})
-        [Precept] I'll remember that as a standing convention for this repo:
-        API responses go through envelope(). Keep it?
-You     keep it
+You     add a GET /orders/{id} endpoint
+Claude  Added it:  return {"id": o.id, "status": o.status}
+You     [before committing, I rewrite the return myself:
+         return envelope({"id": o.id, "status": o.status})]
+Claude  [Precept] You routed the response through envelope() yourself rather
+        than telling me to. That reads like a standing convention for this
+        repo: API responses go through envelope(). Keep it?
+You     yes, keep it
 Claude  Kept. I'll follow it here from now on.
 ```
 
@@ -236,7 +236,7 @@ Claude  Added it, returned through the envelope helper to match the rest
         of the API:  return envelope(report.as_dict())
 ```
 
-*Payoff:* I never repeated the rule. The standard I set carried into the new session and shaped the first draft on its own.
+*Payoff:* I never stated a rule or even said a word. Precept read the edit I made to its output and carried the convention into the new session on its own.
 
 **3. A fact mentioned once is recalled when it matters.**
 *Serves O2 · R2.1, R2.2*
