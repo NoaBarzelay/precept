@@ -44,6 +44,114 @@ The goal (a platform that keeps improving how my agentic AI work gets done and t
 5. **Not productized for distribution.** This is my own setup, published as-is: no packaging, onboarding, or multi-user support. It is public to be read and copied from, a reference to borrow, not a product to install.
    - *Why:* offering it as a product means owning packaging, support, and a roadmap shaped by other users' needs, which would pull it away from my own workflow; publishing the source lets anyone copy what they want without that.
 
+## Usage Examples
+
+Four representative sessions, written for the experience I am building toward, not today's implementation. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then shaping a later session on its own. The tag names the objective each serves. The first two cover process learning (O1), once from an explicit correction and once from a change I make silently; the last two cover knowledge (O2), a fact I give in passing and research the agent gathers on its own, each saved and brought back when it is relevant again.
+
+**1. A correction I give once keeps holding.**
+*Serves O1 · R3.2, R4.1*
+
+Session 1 · acme-api
+
+```
+You     the deploy failed, install httpx and retry
+Claude  Installing httpx with pip.
+You     no, this is a uv project. use `uv pip install`, never plain pip here
+Claude  Reran it with uv. Done.
+        [Precept] That reads like a standing preference: in a uv project,
+        always use uv, never plain pip. Want me to hold to it from now on?
+You     yes
+Claude  Set. I'll apply it in this project going forward.
+```
+
+Session 2 · acme-api · three days later, a fresh session
+
+```
+You     add the stripe sdk
+Claude  Installing stripe with pip.
+        [Precept] Held: this is a uv project, use uv here
+        (from the preference you set earlier).
+Claude  Reran with uv. Added stripe to the project.
+```
+
+*Payoff:* the mistake I corrected once is caught on its own in a new session, before it runs, without me watching for it.
+
+**2. An edit I make myself becomes a standing convention.**
+*Serves O1 · R3.1, R3.2*
+
+Session 1 · acme-api
+
+```
+You     add a GET /orders/{id} endpoint
+Claude  Added it:  return {"id": o.id, "status": o.status}
+You     [before committing, I rewrite the return myself:
+         return envelope({"id": o.id, "status": o.status})]
+Claude  [Precept] You routed the response through envelope() yourself rather
+        than telling me to. That reads like a standing convention for this
+        repo: API responses go through envelope(). Keep it?
+You     yes, keep it
+Claude  Kept. I'll follow it here from now on.
+```
+
+Session 2 · acme-api · a new endpoint, fresh session
+
+```
+You     add GET /reports/{id}
+Claude  Added it, returned through the envelope helper to match the rest
+        of the API:  return envelope(report.as_dict())
+```
+
+*Payoff:* I never stated a rule or even said a word. Precept read the edit I made to its output and carried the convention into the new session on its own.
+
+**3. A fact mentioned once is recalled when it matters.**
+*Serves O2 · R2.1, R2.2*
+
+Session 1 · acme-api
+
+```
+You     fyi staging runs on Render, prod is Fly.io (app acme-api). don't mix them
+Claude  Noted. I'll remember where staging and prod run.
+```
+
+Session 2 · acme-api · two weeks and several sessions later
+
+```
+You     the staging deploy is failing, can you look at the config
+Claude  Staging runs on Render (prod is Fly.io, acme-api), so I'm checking
+        the Render config, not Fly.io.
+```
+
+*Payoff:* two weeks on, I did not re-explain where staging runs. The fact surfaced on its own because the topic was relevant.
+
+**4. Research the agent runs once comes back when it is relevant.**
+*Serves O2 · R2.1, R2.2*
+
+Session 1 · acme-api
+
+```
+You     before we add tool calling, research the current prompt-injection
+        defenses for agent tool inputs and lay out the options
+Claude  Here are the main defenses, with tradeoffs:
+          - schema-validate and allow-list every tool input
+          - quarantine untrusted content: pass it as data, never merge it
+            into the instruction
+          - tag provenance so downstream steps know what is untrusted
+        ...
+        [Precept] Saved this to knowledge: prompt-injection-defenses
+        (the options and tradeoffs the agent gathered this session).
+```
+
+Session 2 · acme-api · three weeks later, building the tool layer
+
+```
+You     add the handler that feeds fetched web content into the tool call
+Claude  From the prompt-injection research we did earlier, the pattern we
+        settled on: the fetched text goes in as data, never merged into the
+        instruction, and is schema-validated first. Adding the handler that way.
+```
+
+*Payoff:* the investigation the agent ran weeks ago was not thrown away. It came back on its own when I built the feature it informed, so the agent worked from it instead of researching the same thing twice.
+
 ## Risks and Mitigations
 
 A pre-mortem: assuming Precept had failed a year into daily use, these are the causes, ordered by impact, each paired with its mitigation. Undecided design forks live in Open Questions.
@@ -186,114 +294,6 @@ These are the properties that have to hold for a system that learns from my sess
 | N10 | Privacy boundary | Learned content (the catalog, local state, any vault) lives outside this repository, and the boundary is enforced, not asserted: a CI test fails the build if a populated catalog card, local session config, or personal marker (home paths, phone patterns, vault mounts) is ever tracked. The public code plane never contains my private data plane. | `tests/test_repo_privacy.py` runs in CI and fails on any tracked private artifact. | built |
 
 A note on what is deliberately absent. There is no availability SLA, no horizontal-scalability target, and no multi-tenant isolation requirement, because there is one user on one machine and the system is allowed to be absent (it fails open by design, N1). Adding those would be answering a question nobody asked. The one attribute I would add before any other user touched this is a catalog schema-version and migration guarantee: today the reversibility guarantee (N8) covers a clean uninstall but not forward-migration of a catalog that has accumulated for months if the card format changes. I name it here as a known gap rather than imply it is handled.
-
-## Usage Examples
-
-Four representative sessions, written for the experience I am building toward, not today's implementation. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then shaping a later session on its own. The tag names the objective each serves. The first two cover process learning (O1), once from an explicit correction and once from a change I make silently; the last two cover knowledge (O2), a fact I give in passing and research the agent gathers on its own, each saved and brought back when it is relevant again.
-
-**1. A correction I give once keeps holding.**
-*Serves O1 · R3.2, R4.1*
-
-Session 1 · acme-api
-
-```
-You     the deploy failed, install httpx and retry
-Claude  Installing httpx with pip.
-You     no, this is a uv project. use `uv pip install`, never plain pip here
-Claude  Reran it with uv. Done.
-        [Precept] That reads like a standing preference: in a uv project,
-        always use uv, never plain pip. Want me to hold to it from now on?
-You     yes
-Claude  Set. I'll apply it in this project going forward.
-```
-
-Session 2 · acme-api · three days later, a fresh session
-
-```
-You     add the stripe sdk
-Claude  Installing stripe with pip.
-        [Precept] Held: this is a uv project, use uv here
-        (from the preference you set earlier).
-Claude  Reran with uv. Added stripe to the project.
-```
-
-*Payoff:* the mistake I corrected once is caught on its own in a new session, before it runs, without me watching for it.
-
-**2. An edit I make myself becomes a standing convention.**
-*Serves O1 · R3.1, R3.2*
-
-Session 1 · acme-api
-
-```
-You     add a GET /orders/{id} endpoint
-Claude  Added it:  return {"id": o.id, "status": o.status}
-You     [before committing, I rewrite the return myself:
-         return envelope({"id": o.id, "status": o.status})]
-Claude  [Precept] You routed the response through envelope() yourself rather
-        than telling me to. That reads like a standing convention for this
-        repo: API responses go through envelope(). Keep it?
-You     yes, keep it
-Claude  Kept. I'll follow it here from now on.
-```
-
-Session 2 · acme-api · a new endpoint, fresh session
-
-```
-You     add GET /reports/{id}
-Claude  Added it, returned through the envelope helper to match the rest
-        of the API:  return envelope(report.as_dict())
-```
-
-*Payoff:* I never stated a rule or even said a word. Precept read the edit I made to its output and carried the convention into the new session on its own.
-
-**3. A fact mentioned once is recalled when it matters.**
-*Serves O2 · R2.1, R2.2*
-
-Session 1 · acme-api
-
-```
-You     fyi staging runs on Render, prod is Fly.io (app acme-api). don't mix them
-Claude  Noted. I'll remember where staging and prod run.
-```
-
-Session 2 · acme-api · two weeks and several sessions later
-
-```
-You     the staging deploy is failing, can you look at the config
-Claude  Staging runs on Render (prod is Fly.io, acme-api), so I'm checking
-        the Render config, not Fly.io.
-```
-
-*Payoff:* two weeks on, I did not re-explain where staging runs. The fact surfaced on its own because the topic was relevant.
-
-**4. Research the agent runs once comes back when it is relevant.**
-*Serves O2 · R2.1, R2.2*
-
-Session 1 · acme-api
-
-```
-You     before we add tool calling, research the current prompt-injection
-        defenses for agent tool inputs and lay out the options
-Claude  Here are the main defenses, with tradeoffs:
-          - schema-validate and allow-list every tool input
-          - quarantine untrusted content: pass it as data, never merge it
-            into the instruction
-          - tag provenance so downstream steps know what is untrusted
-        ...
-        [Precept] Saved this to knowledge: prompt-injection-defenses
-        (the options and tradeoffs the agent gathered this session).
-```
-
-Session 2 · acme-api · three weeks later, building the tool layer
-
-```
-You     add the handler that feeds fetched web content into the tool call
-Claude  From the prompt-injection research we did earlier, the pattern we
-        settled on: the fetched text goes in as data, never merged into the
-        instruction, and is schema-validated first. Adding the handler that way.
-```
-
-*Payoff:* the investigation the agent ran weeks ago was not thrown away. It came back on its own when I built the feature it informed, so the agent worked from it instead of researching the same thing twice.
 
 ## KPIs
 
