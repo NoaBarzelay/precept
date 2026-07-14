@@ -179,54 +179,120 @@ These are the properties that have to hold for a system that learns from my sess
 
 A note on what is deliberately absent. There is no availability SLA, no horizontal-scalability target, and no multi-tenant isolation requirement, because there is one user on one machine and the system is allowed to be absent (it fails open by design, N1). Adding those would be answering a question nobody asked. The one attribute I would add before any other user touched this is a catalog schema-version and migration guarantee: today the reversibility guarantee (N8) covers a clean uninstall but not forward-migration of a catalog that has accumulated for months if the card format changes. I name it here as a known gap rather than imply it is handled.
 
-## Example Workflows
+## Usage Examples
 
-**1. A rule set once, enforced from then on.** I keep reaching for `pip` in a `uv` project and correcting the agent. Precept catches the correction from the transcript:
+Four representative sessions. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then changing a later session. The tag on each names the objective it serves and, for a process, its enforcement tier. Between them they span both objectives (O1 processes, O2 knowledge) and both tiers (a hard block and soft steering).
 
-```
-$ precept detect ~/.claude/projects/acme/transcript.jsonl
-Minted PENDING use-uv-not-pip: reached for `pip install` in a uv project
-Review: precept why use-uv-not-pip · keep: precept keep use-uv-not-pip
+**1. A correction becomes a hard block.**
+*Serves O1 (process) · HARD enforcement · R3.2, R4.1*
 
-$ precept why use-uv-not-pip
-use-uv-not-pip  (pending, confidence 0.82)
-  origin:  user_turn (session acme-0714)
-  quote:   "no, use uv pip install, never plain pip here"
-  signals: quote=True imperative=True deterministic=True
-
-$ precept keep use-uv-not-pip
-Kept use-uv-not-pip -> HARD. Recompiled 7 active policies.
-```
-
-A later session, the agent is stopped at the tool call, not just reminded:
+Session 1 · acme-api · learning
 
 ```
-PreToolUse(Bash) denied
-  command: pip install httpx
-  reason:  Use `uv pip install` here (kept from your correction, session acme-0714).
+You     the deploy failed, install httpx and retry
+Claude  $ pip install httpx
+You     no, this is a uv project. use `uv pip install`, never plain pip here
+Claude  Reran it as `uv pip install httpx`. Done.
+        [Precept] Drafted a rule from that correction (pending, not enforced yet):
+          use-uv-not-pip: in a uv project use `uv pip install`, never pip.
+          Keep it, or skip?
+You     keep it
+Claude  $ precept keep use-uv-not-pip
+        Kept -> HARD (enforced). Recompiled 7 active policies.
 ```
 
-**2. A fact supplied once, recalled when it applies.**
+Session 2 · acme-api · three days later, a fresh session
 
 ```
-$ precept note "deploy targets" "prod on Fly.io (app acme-api); staging on Render"
-Stored deploy-targets in the local index.
-
-$ precept recall "where does staging run"
-deploy-targets: prod on Fly.io (app acme-api); staging on Render
+You     add the stripe sdk
+Claude  $ pip install stripe
+        [Precept] PreToolUse blocked: use `uv pip install` here
+                  (kept from your correction, session acme-0714).
+        $ uv pip install stripe
+        Added stripe to pyproject.toml.
 ```
 
-The same note is injected into a later session's context automatically when the topic is relevant.
+*Payoff:* the mistake I corrected once is stopped at the tool call in a new session, without me watching for it.
 
-**3. Nothing takes effect without my keep.** A weak candidate stays pending; I dismiss it, and my agent's behavior never changes.
+**2. A style correction becomes a steering convention.**
+*Serves O1 (process) · SOFT, steered not blocked · R3.2, R1.4*
+
+Session 1 · acme-api · learning
 
 ```
-$ precept detect ~/.claude/projects/acme/transcript.jsonl
-Minted PENDING prefer-tabs: mentioned tabs once, no correction
-
-$ precept delete prefer-tabs
-Archived prefer-tabs. Recompiled 7 active policies.
+You     review the new /orders endpoint before I merge
+Claude  It returns a raw dict:  return {"id": o.id, "status": o.status}
+You     we always return through the `envelope()` helper so every response
+        has one shape. fix it, and remember it
+Claude  Changed it to:  return envelope({"id": o.id, "status": o.status})
+        [Precept] Drafted a convention (soft: it steers me, it does not block):
+          envelope-responses: return API responses through `envelope()`.
+          Keep it?
+You     keep it
+Claude  $ precept keep envelope-responses
+        Kept -> soft (steered). Convention written to
+        .claude/rules/envelope-responses.md (loaded as context next session).
 ```
+
+Session 2 · acme-api · a new endpoint, fresh session
+
+```
+You     add GET /reports/{id}
+Claude  Added it. Returned it through the envelope helper to match the
+        rest of the API:
+          return envelope(report.as_dict())
+```
+
+*Payoff:* I never repeated the rule. The convention loaded itself into the new session and shaped the first draft, no block needed.
+
+**3. A fact mentioned once, recalled when it matters.**
+*Serves O2 (knowledge) · captured and recalled · R2.1, R2.2*
+
+Session 1 · acme-api
+
+```
+You     fyi staging runs on Render, prod is Fly.io (app acme-api). don't mix them
+Claude  Noted.
+        [Precept] Saved to knowledge: deploy-targets
+          staging = Render; prod = Fly.io (app acme-api).
+```
+
+Session 2 · acme-api · two weeks and several sessions later
+
+```
+You     the staging deploy is failing, can you look at the config
+Claude  [Precept] recalled: deploy-targets (staging = Render)
+        Checking the Render config for staging, not Fly.io.
+```
+
+*Payoff:* two weeks on, I did not re-explain where staging runs. The fact surfaced on its own because the topic was relevant.
+
+**4. A changed preference supersedes the stale one.**
+*Serves O2 (knowledge stays current) · SOFT governance · R3.3*
+
+Session 1 · web-app · learning
+
+```
+You     I moved all tests to a top-level tests/ tree. put new tests there now,
+        not next to the source
+Claude  Understood.
+        [Precept] This contradicts an existing convention:
+          colocate-tests (kept 2026-05, "tests live next to the source").
+          Replace it with the new one?
+You     yes, replace it
+Claude  $ precept govern --supersede colocate-tests place-tests-in-tests-tree
+        Archived colocate-tests -> superseded by place-tests-in-tests-tree.
+        Recompiled 6 active policies.
+```
+
+Session 2 · web-app · fresh session
+
+```
+You     scaffold tests for the billing module
+Claude  Added tests/billing/test_billing.py under the tests/ tree.
+```
+
+*Payoff:* the outdated convention did not linger and fire against the new layout. The catalog reflects how I work now, not how I worked in May.
 
 ## KPIs
 
