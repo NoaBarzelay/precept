@@ -181,43 +181,40 @@ A note on what is deliberately absent. There is no availability SLA, no horizont
 
 ## Usage Examples
 
-Four representative sessions. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then changing a later session. The tag on each names the objective it serves and, for a process, its enforcement tier. Between them they span both objectives (O1 processes, O2 knowledge) and both tiers (a hard block and soft steering).
+Four representative sessions, written for the experience I am building toward, not today's implementation. Each shows a preference or a fact entering through ordinary conversation, passing my review, and then shaping a later session on its own. The tag names the objective each serves. Between them they cover both objectives: the processes I want my agent to follow (O1) and the knowledge I want it to keep and recall (O2).
 
-**1. A correction becomes a hard block.**
-*Serves O1 (process) · HARD enforcement · R3.2, R4.1*
+**1. A correction I give once keeps holding.**
+*Serves O1 · R3.2, R4.1*
 
-Session 1 · acme-api · learning
+Session 1 · acme-api
 
 ```
 You     the deploy failed, install httpx and retry
-Claude  $ pip install httpx
+Claude  Installing httpx with pip.
 You     no, this is a uv project. use `uv pip install`, never plain pip here
-Claude  Reran it as `uv pip install httpx`. Done.
-        [Precept] Drafted a rule from that correction (pending, not enforced yet):
-          use-uv-not-pip: in a uv project use `uv pip install`, never pip.
-          Keep it, or skip?
-You     keep it
-Claude  $ precept keep use-uv-not-pip
-        Kept -> HARD (enforced). Recompiled 7 active policies.
+Claude  Reran it with uv. Done.
+        [Precept] That reads like a standing preference: in a uv project,
+        always use uv, never plain pip. Want me to hold to it from now on?
+You     yes
+Claude  Set. I'll apply it in this project going forward.
 ```
 
 Session 2 · acme-api · three days later, a fresh session
 
 ```
 You     add the stripe sdk
-Claude  $ pip install stripe
-        [Precept] PreToolUse blocked: use `uv pip install` here
-                  (kept from your correction, session acme-0714).
-        $ uv pip install stripe
-        Added stripe to pyproject.toml.
+Claude  Installing stripe with pip.
+        [Precept] Held: this is a uv project, use uv here
+        (from the preference you set earlier).
+Claude  Reran with uv. Added stripe to the project.
 ```
 
-*Payoff:* the mistake I corrected once is stopped at the tool call in a new session, without me watching for it.
+*Payoff:* the mistake I corrected once is caught on its own in a new session, before it runs, without me watching for it.
 
-**2. A style correction becomes a steering convention.**
-*Serves O1 (process) · SOFT, steered not blocked · R3.2, R1.4*
+**2. A standard I set once is followed on its own.**
+*Serves O1 · R3.2, R1.4*
 
-Session 1 · acme-api · learning
+Session 1 · acme-api
 
 ```
 You     review the new /orders endpoint before I merge
@@ -225,74 +222,65 @@ Claude  It returns a raw dict:  return {"id": o.id, "status": o.status}
 You     we always return through the `envelope()` helper so every response
         has one shape. fix it, and remember it
 Claude  Changed it to:  return envelope({"id": o.id, "status": o.status})
-        [Precept] Drafted a convention (soft: it steers me, it does not block):
-          envelope-responses: return API responses through `envelope()`.
-          Keep it?
+        [Precept] I'll remember that as a standing convention for this repo:
+        API responses go through envelope(). Keep it?
 You     keep it
-Claude  $ precept keep envelope-responses
-        Kept -> soft (steered). Convention written to
-        .claude/rules/envelope-responses.md (loaded as context next session).
+Claude  Kept. I'll follow it here from now on.
 ```
 
 Session 2 · acme-api · a new endpoint, fresh session
 
 ```
 You     add GET /reports/{id}
-Claude  Added it. Returned it through the envelope helper to match the
-        rest of the API:
-          return envelope(report.as_dict())
+Claude  Added it, returned through the envelope helper to match the rest
+        of the API:  return envelope(report.as_dict())
 ```
 
-*Payoff:* I never repeated the rule. The convention loaded itself into the new session and shaped the first draft, no block needed.
+*Payoff:* I never repeated the rule. The standard I set carried into the new session and shaped the first draft on its own.
 
-**3. A fact mentioned once, recalled when it matters.**
-*Serves O2 (knowledge) · captured and recalled · R2.1, R2.2*
+**3. A fact mentioned once is recalled when it matters.**
+*Serves O2 · R2.1, R2.2*
 
 Session 1 · acme-api
 
 ```
 You     fyi staging runs on Render, prod is Fly.io (app acme-api). don't mix them
-Claude  Noted.
-        [Precept] Saved to knowledge: deploy-targets
-          staging = Render; prod = Fly.io (app acme-api).
+Claude  Noted. I'll remember where staging and prod run.
 ```
 
 Session 2 · acme-api · two weeks and several sessions later
 
 ```
 You     the staging deploy is failing, can you look at the config
-Claude  [Precept] recalled: deploy-targets (staging = Render)
-        Checking the Render config for staging, not Fly.io.
+Claude  Staging runs on Render (prod is Fly.io, acme-api), so I'm checking
+        the Render config, not Fly.io.
 ```
 
 *Payoff:* two weeks on, I did not re-explain where staging runs. The fact surfaced on its own because the topic was relevant.
 
-**4. A changed preference supersedes the stale one.**
-*Serves O2 (knowledge stays current) · SOFT governance · R3.3*
+**4. A preference I change replaces the one it outdates.**
+*Serves O2 · R3.3*
 
-Session 1 · web-app · learning
+Session 1 · web-app
 
 ```
 You     I moved all tests to a top-level tests/ tree. put new tests there now,
         not next to the source
 Claude  Understood.
-        [Precept] This contradicts an existing convention:
-          colocate-tests (kept 2026-05, "tests live next to the source").
-          Replace it with the new one?
+        [Precept] This reverses a convention you set earlier
+        (May: tests live next to the source). Replace it with the new one?
 You     yes, replace it
-Claude  $ precept govern --supersede colocate-tests place-tests-in-tests-tree
-        Archived colocate-tests -> superseded by place-tests-in-tests-tree.
-        Recompiled 6 active policies.
+Claude  Done. The earlier convention is retired; new tests go under tests/.
 ```
 
 Session 2 · web-app · fresh session
 
 ```
 You     scaffold tests for the billing module
-Claude  Added tests/billing/test_billing.py under the tests/ tree.
+Claude  Added tests under the tests/ tree: tests/billing/test_billing.py
 ```
 
-*Payoff:* the outdated convention did not linger and fire against the new layout. The catalog reflects how I work now, not how I worked in May.
+*Payoff:* the outdated convention did not linger and mislead the new session. What surfaces reflects how I work now, not how I worked in May.
 
 ## KPIs
 
