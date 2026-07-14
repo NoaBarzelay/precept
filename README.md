@@ -288,9 +288,9 @@ Session 2 · acme-api · three weeks later, building the tool layer
 
 ```
 You     add the handler that feeds fetched web content into the tool call
-Claude  Precept brought back our earlier research on prompt-injection defenses.
-        Applying the pattern we settled on: the fetched text goes in as data,
-        never merged into the instruction, and is schema-validated first.
+Claude  From the prompt-injection research we did earlier, the pattern we
+        settled on: the fetched text goes in as data, never merged into the
+        instruction, and is schema-validated first. Adding the handler that way.
 ```
 
 *Payoff:* the investigation the agent ran weeks ago was not thrown away. It came back on its own when I built the feature it informed, so the agent worked from it instead of researching the same thing twice.
