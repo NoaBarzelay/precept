@@ -312,24 +312,117 @@ A pre-mortem: assuming Precept had failed a year into daily use, these are the c
 
 ## KPIs
 
-The key results are qualitative; the numbers live here. A KPI is either a standing dial I watch to keep the system healthy, or the single metric behind a key result. Each is marked live or instrumented (harness built, wiring pending). Unset thresholds are left blank with the reason, not filled with a guess.
+The key results above are qualitative. This section is the number behind each one, plus the dials that keep the system honest while those numbers move.
 
-Standing dials (live):
-- Enforcement scorecard: the real engine run over 25 committed cases as a confusion matrix, no model call, CI-gated. Current: recall 100% (TP 10, FN 0), false-block rate 0% (FP 0, TN 15), bounded to violations it has a rule for. Recall is the metric I push; false-block rate is the guardrail, since a false block is the costly error.
-- Learning-loop token cost: tokens spent by detect, compile, and the verdict calls, so the loop's overhead stays visible and throttleable. No target.
+Four rules govern what appears here.
 
-The number behind each key result:
+**Every metric traces up to a key result, and only outcomes count.** A metric that measures work done (entity types built, preferences recorded, sessions processed) can be a diagnostic, never a target: I can move all of them and still be re-teaching the agent every week.
 
-| Objective | Key result | KPI | Target | Status |
-|---|---|---|---|---|
-| O1 | Conveyed once, stays | Recurrence rate of a correction I already gave | Near zero | Instrumented |
-| O1 | Learnings hold up | Override or rollback rate of embedded learnings | Low; unset | Instrumented |
-| O2 | Retrieved when relevant | Retrieval recall at k in relevant contexts | Unset | Instrumented |
-| O2 | Current, not stale | Stale-recall rate | Low | Instrumented |
+**Quantity is always paired with quality.** Every metric that rewards Precept for doing more, capturing more, enforcing more, injecting more, is paired with one that penalizes doing it badly. The loop that produces each number is also the loop that could game it, so the pairing is structural, not decorative.
 
-Two thresholds are unset by design: the override-rate floor needs a usage baseline I do not have yet, and the recall-at-k target is the measurement that decides whether ranking needs more than a lexical signal, so I will not pin it before it runs.
+**An unset target is stated as unset, with the method and window that will set it.** Precept has no usage baseline: it has weeks of my own use, not the several full measurement periods a rate needs before its baseline means anything. A confident number here would be invented, and a target extrapolated from today's performance would lock in whatever the system happens to do now.
 
-The end-to-end O1 measure, whether enforcement improves adherence, is a paired before-and-after reported with a 95% confidence interval, because agentic evals swing several points run to run. Harness built; wiring is the next milestone.
+**A bound enforced in code is not a metric, and a number with no good direction is not a target.** Caps that a test fails on are listed separately from dials I watch, and a ratio that reads well in both directions is a diagnostic. Keeping the watched set small is what makes a wobble in it mean something.
+
+Status vocabulary: **live** (a command in this repo reports it today), **recorded** (the underlying data is captured per entry, no report written yet), **instrumented** (harness built and tested, wiring pending), **planned** (neither). I am the only owner and the only user, so there is no owner column.
+
+### North star: repeat rate
+
+**The share of things I convey to the agent that I have to convey again.**
+
+Numerator: distinct preferences or facts I state in a session that I had already stated in an earlier session, counted once per recurrence. Denominator: distinct preferences or facts I state in that session. Window: rolling 4 weeks. Segmentation declared in advance: by type (process, knowledge), by repo, and by signal strength (explicit instruction versus inferred from an edit), because the aggregate can hold flat while the implicit half degrades.
+
+This is the one number both objectives resolve to. O1's "I do not have to convey it again" and O2's "it does not have to be re-learned" are the same failure counted over two kinds of content, which is why it sits above both rather than beside them. It is leading, it is influenceable at every stage of the loop, and it is the failure I actually feel.
+
+It is also a hand tally, not an instrumented number, and I would rather say so than dress it up. I count it myself, one row per repeat. It is confounded by task mix, since a month spanning four repos produces more repeats than a month on one. Worse, it is biased downward exactly when the system is failing: a repeat I do not remember making is a repeat I do not count. It sits at the top because it is the right thing to care about, and the committed primary below is the one with a harness behind it.
+
+*Gaming check:* the cheap way to drive it down is to capture everything and inject everything, trading repeats for a flooded context and rules that fire where they should not. The false-block guardrail and the injection bounds are what make that trade unprofitable.
+
+*Baseline and target:* both unset. Method: a four-week tally begun once the review gate has run long enough for the catalog to stop growing steeply. That first window also establishes N, and therefore the smallest change this tally can resolve, which I will state with the baseline rather than assume now. Status: planned.
+
+### Committed primary: adherence lift
+
+**Corrected-behavior rate with enforcement minus the same rate without it.**
+
+Paired by task, seed, and machine across trials, reported as a mean delta with a 95% confidence interval and its trial count. This is the committed primary because it is the only end-to-end number with a statistical core already built and a defensible way to report itself. It is also the measurement that separates the claim Precept can already prove, that enforcement fires, from the one it cannot yet, that enforcement helps.
+
+Its limit is scope: it measures O1 only. O2 has no live number at all, which is the honest state of the knowledge half of this platform.
+
+*Target:* positive at 95% CI. *Status:* instrumented. The paired statistics are built and tested; the agent runs that feed them are not wired, so there is no trial count yet.
+
+### Supporting metrics
+
+Each is the single number behind one key result. The claim that moving these moves the north star is a hypothesis, and it stays unvalidated until the tally above exists to check it against.
+
+| Objective | Key result | Metric | Target | Window | Status |
+|---|---|---|---|---|---|
+| O1 | Conveyed once, stays | Enforcement recall, golden set | Hold at 25/25 cases, CI-gated | Per commit | Live |
+| O1 | Conveyed once, stays | Missed-preference yield per hindsight audit | Declining across audits | Per audit | Planned |
+| O1 | Learnings hold up | Override rate of live preferences | Unset; needs baseline | Rolling 90 days | Recorded |
+| O1 | Learnings hold up | Verdict agreement with my own label | Unset; needs a labeled set | Per eval run | Planned |
+| O1 | Learnings hold up | Verdict stability on identical inputs | Unset; needs a repeated-verdict set | Per eval run | Planned |
+| O2 | Retrieved when relevant | Retrieval recall at 5 | Unset by design | Per eval run | Planned |
+| O2 | Retrieved when relevant | Injection precision at 5 | Unset by design | Per eval run | Planned |
+| O2 | Current, not stale | Stale-surface rate | Unset; a retired entry surfacing is a bug, not a tuning knob | Rolling 4 weeks | Planned |
+
+Definitions, in the same order:
+
+- **Enforcement recall.** Violations blocked over violations present, run by the real matcher over 25 committed cases (10 violations, 15 compliant) with no model call. Currently 10 of 10. Bounded to violations Precept has a rule for, so it measures whether enforcement fires, not whether the rule set is complete. Source: `precept evals`.
+- **Missed-preference yield.** Preferences recovered by a scheduled re-examination of past sessions, over sessions re-examined. This is the recall side of detection, and the only check on abstention: a detector that records nothing looks identical to a session with nothing to record, and this is what tells the two apart. A yield that stays flat across audits means the live detector is missing a steady share.
+- **Override rate.** Preferences I disable, narrow, or reverse over preferences live at least 30 days, the same window `precept govern` uses to propose decay. This catches an inference that passed the review gate and then did not survive contact with use.
+- **Verdict agreement.** Model verdicts matching my own label on a held-out set of turns. The verdict path is the one place enforcement rests on model reasoning, and today nothing validates it against my judgment. Building the labeled set is also the precondition for checking the judge for position and verbosity bias.
+- **Verdict stability.** Share of repeated identical judge inputs returning the same verdict. N13 has two halves and agreement is only one of them: a judge can be right on average and still be non-deterministic, which is the failure that makes enforcement feel arbitrary.
+- **Retrieval recall at 5.** Relevant entries appearing in the injected top 5 over relevant entries in the catalog, against a hand-labeled query set. Unset by design: this measurement is what decides whether lexical ranking suffices or whether ranking needs precision signals beyond keyword overlap, so pinning a target before it runs would prejudge the answer it exists to give.
+- **Injection precision at 5.** Injected entries that were relevant over entries injected. Recall alone is trivially raised by surfacing more, and this is the number that goes bad when it is.
+- **Stale-surface rate.** Retired or superseded entries surfaced over entries surfaced. Nothing logs what was surfaced today, so the injection path has to record its own output before this can be counted at all.
+
+### Guardrails
+
+Dials that must not degrade while the numbers above improve, each derived from a specific risk in the pre-mortem rather than from a generic list.
+
+| Guardrail | Protects against | Tolerance | Status |
+|---|---|---|---|
+| False-block rate, golden set | Risk 2 | 0 of 15 compliant cases, CI-gated | Live |
+| False-block rate, live use | Risk 2, N13 | Unset; no live denominator yet | Planned |
+| Fail-open on verdict error | Risk 2, N1 | No errored verdict resolves to a block; countable from the event log | Instrumented |
+| Learning-loop token cost | Risk 5, N10 | Static prompt cost: no drift against the committed baseline, CI-gated. Per-session runtime spend: alert threshold unset | Live |
+| Added latency per turn, p95 | Risk 5, N2 | Retrieval query budget is 1.5s, a cap in code rather than a measurement; per-turn latency needs a hook-boundary timer | Planned |
+
+**False-block rate is the guardrail I weight highest,** because a false block is the expensive error: a recall failure costs me one correction, a false block costs me trust, and a tool I stop trusting gets switched off, which forfeits the whole capability. That asymmetry is why recall is the number I push and this is the one I hold.
+
+Two forms of cannibalization are worth naming, because both are ways Precept could win its own metrics by taking from something else. Its injected slice competes for the same context as Claude Code's native memory and my CLAUDE.md files, so a bigger slice can lower repeat rate while degrading everything else in the window. And its model spend draws on the same subscription quota as my own work. The bounds below address the first, the token cost guardrail the second.
+
+### Bounds enforced in code
+
+Invariants, not dials. Each is a cap or a property a test fails on, which is what makes the claims behind N9, N1, N3, and N4 real rather than aspirational. They are listed so the numbers are stated, not because anything watches them drift: they cannot drift.
+
+- Injected knowledge block: 2,000 characters, top 5 entries. Conventions retrieved per turn: 5. Neither grows with catalog size (N9).
+- Always-loaded core: 200 lines (R1.8).
+- Review prompts surfaced per session: 5 (Risk 1, Risk 5).
+- Retrieval query budget: 1.5 seconds (N2).
+- Fail-open on any Precept fault, logic executes as data only, and one egress boundary that the mechanically checked path never crosses (N1, N3, N4). Pass or fail properties under test, not rates.
+
+### Diagnostics
+
+Watched, deliberately without targets. These explain why a number above moved; they are not things to move on their own.
+
+- **Keep and dismiss mix at the review gate,** by signal type. No good direction: a high keep rate can mean sound inference or a gate I stopped reading. It is still the number I would look at first if I noticed myself waving prompts away, which is the quiet way this system gets abandoned.
+- **Confirmations to graduation per rule** (R1.19 to R1.21), and the share of rules narrowed on a no. Whether inference is getting better, or whether I am rubber-stamping.
+- **Per-flow token consumption** with p50 and p95 across detect, compile, capture, and the three verdict paths (`precept tokens`).
+- **Catalog composition:** entries by type, by age, by times confirmed.
+- **Provenance coverage:** share of active entries resolving to a session excerpt and an approval record (N6).
+- **Guarded tool-call scorecard** over the event log (`precept report`).
+
+### Measurement discipline
+
+- Anything measured from live agent runs is reported as a paired delta with a 95% confidence interval and its trial count. Agentic evals swing several points run to run from infrastructure alone, so a single before-and-after number is not defensible and I will not report one. The noise floor is whatever the first paired run measures, not a figure I can state in advance.
+- Every rate is reported with its N, and no improvement is claimed that is smaller than the run-to-run variance of the harness that produced it.
+- Every ratio states its numerator and denominator above, because a ratio can improve from either end and only one of those is usually what I wanted.
+- Latency is reported at p95, never as an average, because the tail is what makes a turn feel slow.
+- The golden set's 25 of 25 and 0 of 15 are statements about a fixed, committed corpus, not claims about live traffic. They are regression gates, and the live equivalents are separate rows that are honestly unset.
+- No target here was set by extrapolating current performance.
+
+The unset targets are unset in two distinct ways. Override rate and the north star are waiting on a usage baseline that only accumulates with time, and each is set from the first four weeks in which the catalog is stable. Retrieval recall, injection precision, verdict agreement, and verdict stability are waiting on labeled sets that do not exist yet, and each of those measurements decides a design question, so measuring first and targeting second is the order that keeps the answer honest.
 
 ## Roadmap
 
