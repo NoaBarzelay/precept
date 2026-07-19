@@ -291,18 +291,6 @@ A pre-mortem: assuming Precept had failed a year into daily use, these are the c
 | R2.10 | When the condition recorded knowledge holds under stops being true, Precept proposes retiring it for confirmation. | Retirement-proposal test |
 | R2.11 | If two pieces of recorded knowledge contradict, Precept surfaces the conflict for reconciliation. | Conflict-detection test |
 
-### Realization notes
-
-The mechanism the requirements deliberately abstract over. Typed entity, tier, and commit target live here, because they are how, not what.
-
-- **Structure and types:** preferences and knowledge are stored as individually addressable typed entries; that structure is what makes currency (R1.8, R1.9, R2.9 to R2.11) and precise retrieval possible. Nine entity types with commit targets: Rule to hooks and `permissions.deny`, Knowledge note to a local index, Convention to `.claude/rules/*.md`, Skill, Agent persona, Output style, Slash command, MCP config, Permission profile.
-- **Placement and retrieval (R1.7):** Precept commits each steering preference to the Claude Code artifact whose native load rule surfaces it in the right context (a path-scoped rule file, a skill described for the task, or the small always-on core), so surfacing leans on Claude Code's own loading, not a Precept-built retriever. Only the knowledge index (R2.5) is Precept-retrieved.
-- **Long-form knowledge (R2.7):** a research note is stored whole so its reasoning survives, and surfaced in the part that applies, so a long record can enter a session without displacing the work. Section-level addressing is what makes this possible.
-- **Steering vs enforcing (Non-Goal 2):** most preferences steer through context (R1.7); only one that must hold in every case is enforced (R1.16, R1.17). That set stays small on purpose.
-- **Context budget:** a size cap on the always-loaded set, everything else loaded only in scope, so adherence (R1.7) holds as the catalog grows. Risks 3 and 4 point here.
-- **Enforcement:** targets are a hook decision, a `permissions.deny` rule, or a subagent tool-scope; the R1.17 check runs every turn, only the verdict is a model call.
-- **R1.13 schedule** and the **R1.20 confirmation threshold** are tunable parameters, which is why neither number appears in the requirement.
-
 ## Non-Functional Requirements
 
 The functional requirements say what Precept does. These say how well it has to hold up while doing it, for a system that learns from my sessions, rewrites my agent's configuration, and runs inside the tool I work in all day.
