@@ -154,7 +154,7 @@ Claude  From the prompt-injection research we did earlier, the pattern we
 
 ## Risks and Mitigations
 
-A pre-mortem: assuming Precept had failed a year into daily use, these are the causes, ordered by impact, each paired with its mitigation. Undecided design forks live in Open Questions.
+A pre-mortem: assuming Precept had failed a year into daily use, these are the causes, ordered by impact, each paired with its mitigation.
 
 1. **The learning signal is missed or misinterpreted** (impact: high, probability: medium). Precept's base assumption is that ordinary session activity is a rich enough signal that can be correctly accurately be interpreted by an LLM. It can fail by (1) missing a real preference when the signal is implicit (e.g., text edits) (2) capturing the wrong intent behind a change (3) flattening a conditional preference (do X, except in case Y) into a blanket rule that drops the exception, so the rule over-fires.
    Example: I revert the agent's switch from `requests` to `httpx` because I wanted it in its own PR, and it records "do not use httpx" as a standing preference I never held.
@@ -200,7 +200,7 @@ A pre-mortem: assuming Precept had failed a year into daily use, these are the c
    - **Budgeted always-on core:** the always-loaded set is capped and other artifacts load only when conditions match; most of the catalog therefore stays out of context, and accumulation cannot silently push standing context past the range where adherence holds. [R1.8]
    - **Identify and merge dups on creation:** governance above prunes duplicates once they exist; the root fix is to avoid minting them. A candidate that matches an existing entry would update that entry instead of creating a parallel one, so the catalog trends toward one entry per preference rather than a drift of near-copies to reconcile later. [would extend R1.4]
    - **A budget on the slice Precept injects, not just the always-on set:** the cap above bounds what loads natively, but Precept's hook also retrieves and injects a per-prompt slice of its own, the relevant knowledge notes and the conventions it injects by relevance, as `additionalContext`, and that slice can grow long and low-precision as the index grows. Because Precept builds this slice itself, capping how many entries it injects per turn and setting a minimum relevance score is deterministic selection on its own retrieval path. What Claude Code retrieves natively (CLAUDE.md, the scoped rule files, skills matched by description) is not capped here; that is governed by the budget and scoping above and by keeping the corpus small (dedup, ranking, consolidation). [would extend R2.5, R2.7]
-   - **Rank by precision signals, not lexical overlap alone:** at scale, keyword score cannot separate the one relevant rule from many generic near-matches. Combining it with scope-specificity (a rule scoped to this exact path or repo outranks a global one), recency, and how many times the rule has been confirmed would lift the precise, live entry back above stale generic ones and into the top-k (an embedding index is one option here). [would extend R2.5; Open Question 1: ranking]
+   - **Rank by precision signals, not lexical overlap alone:** at scale, keyword score cannot separate the one relevant rule from many generic near-matches. Combining it with scope-specificity (a rule scoped to this exact path or repo outranks a global one), recency, and how many times the rule has been confirmed would lift the precise, live entry back above stale generic ones and into the top-k (an embedding index is one option here). [would extend R2.5]
    - **Periodic consolidation of the catalog:** beyond retiring entries one at a time, a scheduled compaction would merge clusters of overlapping conventions into a single canonical entry. [would extend R1.10, R2.9]
 
 5. **The system becomes too expensive or too slow** (impact: medium, probability: medium). The learning and enforcement loop leans on AI model calls, which cost both money and time. It can fail by (1) latency: a call that has to run while I am working adds to how long I wait for the turn to finish (2) cost: the calls draw on the same budget and quota I use for my own work, and add up the more I use the system. Enough of either and I stop running it, which halts the compounding.
@@ -327,7 +327,7 @@ The number behind each key result:
 | O2 | Retrieved when relevant | Retrieval recall at k in relevant contexts | Unset | Instrumented |
 | O2 | Current, not stale | Stale-recall rate | Low | Instrumented |
 
-Two thresholds are unset by design: the override-rate floor needs a usage baseline I do not have yet, and the recall-at-k target is the measurement that settles the ranking open question (Open Question 1), so I will not pin it before it runs.
+Two thresholds are unset by design: the override-rate floor needs a usage baseline I do not have yet, and the recall-at-k target is the measurement that decides whether ranking needs more than a lexical signal, so I will not pin it before it runs.
 
 The end-to-end O1 measure, whether enforcement improves adherence, is a paired before-and-after reported with a 95% confidence interval, because agentic evals swing several points run to run. Harness built; wiring is the next milestone.
 
@@ -372,50 +372,6 @@ These are directional. I am naming them honestly as not built, and the order wit
 - Agentic flows. Govern the workflow, not just the action. Today a rule blocks one call and a convention steers one file; the order above that is the repeatable multi-step loop I run with agents (for example, research fan-out, then adversarial verify, then synthesize). Precept would learn a flow I repeat, scaffold the agent through it, and enforce its structure at the Stop gate, extending today's single-call and trajectory checks from one action to a whole sequence.
 
 The through-line: Now is a working loop, Next makes it measured and affordable, Later makes it broad and partly self-driving. I widen scope only after the foundation under it is one I have verified, not one I am hoping holds.
-
-## Open Questions
-
-Unresolved design decisions, not planned work. Each names one decision, the default that ships today, the options, and the evidence that settles it. None of them gates a commitment: every one has a live default, so the system runs while the question stays open. What is excluded on purpose: a failure mode I mitigate but never close is a risk, a capability I chose not to build is a non-goal, and scoped but unbuilt work is roadmap. A resolved question moves to [DECISIONS.md](DECISIONS.md) with its reasoning rather than disappearing.
-
-### Resolved as the system runs
-
-**1. Ranking: what separates the right entry from its near-matches at scale?**
-- *Default today:* one signal, lexical (SQLite FTS5, BM25) with a metadata filter.
-- *Options:* lexical alone; lexical plus precision signals (scope specificity, recency, confirmation count); an embedding index alongside either.
-- *Why it is open:* at a few hundred entries, a dozen generic matches on a common term can fill the top-k ahead of the one precise rule, and a lexical score cannot separate them (Risk 4). Each added signal is another index to build, store, and keep in sync, and single-vector embeddings are weakest on exactly the terse, jargon-dense cards this catalog holds.
-- *What settles it:* Recall@k on my own corpus at ten times its current size (N9). Signals get added in cost order, and only against a miss the cheaper ranking demonstrably makes. The bar that counts as a miss is unset on purpose: set from today's small corpus, it would encode the status quo as the requirement.
-
-**2. Which corrections earn deterministic enforcement, and which need a model verdict?**
-- *Default today:* the least-power cascade (structured predicate, re2, AST, then a model verdict), taking the cheapest tier that can express the rule. The router drafts the tier and my review gates it.
-- *Options:* leave the boundary to the router; require a rule to fail an explicit expressiveness test before it may climb a tier; fix the tier per correction category by hand.
-- *Why it is open:* the cascade's ordering is settled, its boundary is not. A rule like "do not call the client directly" is either a clean AST match or a semantic question about indirection. Mis-tiering low ships a rule that looks enforced and silently misses variants (Risk 3); mis-tiering high spends a model call on every guarded turn (Risk 5, N2).
-- *What settles it:* the misroute rate from the scheduled audit (R1.14), split by tier, since a misroute is invisible to the matcher itself. The unsettled part of that path is statistical: corrections are sparse per session, so a sample I can afford to re-label may not be large enough to move the estimate outside its own noise.
-
-**3. On a turn-end violation, does Precept block, ask, or only record?**
-- *Default today:* it records, and the violation surfaces in the scorecard. The host contract supports all three.
-- *Options:* block and make the turn redo the work; surface it and ask; record only.
-- *Why it is open:* recording alone leaves R1.18 to persuasion, which is the failure Risk 3 describes. Blocking is the only option that actually guarantees the must-hold set, and it is also the one that turns a wrong verdict into a stopped turn, which is the costly error under Risk 2 and the reason N1 fails open everywhere else.
-- *What settles it:* the paired before-and-after eval. If recording alone already moves the corrected-behavior rate, the blocking tier is not worth its downside; if it does not, blocking is what R1.18 was for.
-
-**4. What is the unit Precept retrieves from a long knowledge record?**
-- *Default today:* a fixed-length snippet of the matched record, truncated at a character bound.
-- *Options:* the whole record; a section segmented at capture time; an extract generated per query at retrieval time.
-- *Why it is open:* R2.7 wants the part that applies, and a fixed truncation is only accidentally that part. The whole record blows the injected-slice budget (N9). The per-query extract satisfies R2.7 best and is the one option that puts a model call on the interactive path, which N2 and Risk 5 exist to keep off it.
-- *What settles it:* whether segmentation at capture, which costs nothing at retrieval time, covers enough real queries. The case that would justify the extract is a record whose right slice depends on the question rather than on its own structure, and I do not yet know how common that is.
-
-### Deferred until a named trigger
-
-**5. Is a preference's validity condition machine-checkable or free-form?**
-- *Default today:* one free-text field. R1.3 requires every preference to state the condition it holds under, including "always"; R1.9 retires it when that condition stops holding.
-- *Options:* keep one free-text field and re-confirm by asking; restrict conditions to an observable vocabulary; split into two fields, a checkable predicate where one exists and free text otherwise.
-- *Why it is open:* the two properties pull against each other. A condition the system can evaluate itself (this project uses uv, this config exists) retires automatically, which is what makes the catalog self-curating under Risk 4, but that vocabulary is narrow. A condition like "while the team is small" cannot be evaluated mechanically, and restricting the vocabulary early pushes conditions like it into "always", which is the flattening failure named in Risk 1.
-- *What settles it:* the fraction of conditions that turn out mechanically observable once the catalog holds a few hundred. Mostly observable makes restriction worth its cost; mostly not makes the two-field split the answer and automatic retirement a minority path.
-
-**6. Does Precept coexist with Claude Code's auto memory, ingest it, or switch it off?**
-- *Default today:* coexist. Non-Goal 1 positions Precept as the governed layer over the same knowledge, and auto memory keeps writing its own freeform notes alongside it.
-- *Options:* coexist and accept the ungoverned overlap; ingest auto-memory notes as candidates through the same review gate; have install disable auto memory, with uninstall restoring it (N8).
-- *Why it is open:* auto memory writes unreviewed content into the same context window N7 exists to protect, and it draws on the always-on budget R1.8 caps without passing any gate. Ingesting it extends governance over content I did not author; switching it off takes away a host capability I did not build and might want.
-- *What settles it:* whether auto-memory-written lines show up distinguishably in the override and rollback record (the O1 "learnings hold up" KPI). If ungoverned lines are a measurable share of what I later override, coexistence is the wrong default.
 
 ## Related Documents
 
