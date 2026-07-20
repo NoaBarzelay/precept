@@ -237,10 +237,11 @@ export function ingestCmd(args: string[]): string {
 export async function detectCmd(): Promise<string> {
   const evidence = readEvidence();
   if (evidence.length === 0) return "(no recorded evidence to review)";
-  const queued = await detect(evidence, makeClient());
+  const { queued, proposed, filtered } = await detect(evidence, makeClient());
+  const gated = `${filtered} filtered before the model, ${proposed} sent`;
   return queued === 0
-    ? "detection ran; nothing proposed (no backend configured, or all abstained)"
-    : `detection queued ${queued} candidate(s) for review`;
+    ? `detection ran; nothing proposed (${gated}; no backend configured, or all abstained)`
+    : `detection queued ${queued} candidate(s) for review (${gated})`;
 }
 
 /** Show how often a rule would have fired over recorded history (the review

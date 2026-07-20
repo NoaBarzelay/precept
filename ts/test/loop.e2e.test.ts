@@ -58,7 +58,7 @@ test("the loop runs live: evidence -> detect -> queue -> keep -> catalog", async
 
   // Import readEvidence lazily to run detection over what was recorded.
   const { readEvidence } = await import("../src/record/evidence.ts");
-  const queued = await detect(readEvidence(), fakeDetector);
+  const { queued } = await detect(readEvidence(), fakeDetector);
   expect(queued).toBe(1); // the "how do i" turn abstains
 
   const pending = listPending();
@@ -96,8 +96,43 @@ test("detection abstains on every record when the backend abstains", async () =>
   appendEvidence(ev("e1", "just some chatter"));
   const abstain = new FakeClient(() => null);
   const { readEvidence } = await import("../src/record/evidence.ts");
-  expect(await detect(readEvidence(), abstain)).toBe(0);
+  expect((await detect(readEvidence(), abstain)).queued).toBe(0);
   expect(listPending()).toHaveLength(0);
+});
+
+test("the cost gate skips the model for a plain instruction turn", async () => {
+  appendEvidence({
+    id: "i1",
+    at: "2026-07-20T10:00:00Z",
+    signalKind: "instruction",
+    turns: "user: add a health endpoint", // a one-off task, no durable cue
+    session: "s1",
+  });
+  appendEvidence({
+    id: "i2",
+    at: "2026-07-20T10:01:00Z",
+    signalKind: "instruction",
+    turns: "user: always run the tests before committing", // durable
+    session: "s1",
+  });
+  let calls = 0;
+  const counting = new FakeClient((e) => {
+    calls++;
+    return {
+      kind: "convention",
+      scope: { kind: "global" },
+      content: e.turns,
+      condition: "always",
+      signalKind: "instruction",
+      evidenceId: e.id,
+    };
+  });
+  const { readEvidence } = await import("../src/record/evidence.ts");
+  const result = await detect(readEvidence(), counting);
+  expect(calls).toBe(1); // only the durable instruction reached the model
+  expect(result.proposed).toBe(1);
+  expect(result.filtered).toBe(1);
+  expect(result.queued).toBe(1);
 });
 
 test("keep/dismiss on an unknown pending id are reported, not thrown", () => {
