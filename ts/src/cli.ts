@@ -3,12 +3,17 @@
 // strings so they are testable; main() prints them.
 
 import type { Candidate } from "./domain/candidate.ts";
-import type { Scope } from "./domain/entry.ts";
+import {
+  confirmOnce,
+  narrowOnReject,
+  type Scope,
+} from "./domain/entry.ts";
 import { review } from "./gate/gate.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
-import { allEntries, removeCard } from "./store/card.ts";
+import { allEntries, readCard, removeCard, writeCard } from "./store/card.ts";
+import { withCardLock } from "./store/lock.ts";
 
 interface NoteFlags {
   scope: Scope;
@@ -104,6 +109,62 @@ export function compileCmd(): string {
   return `compiled ${rules.length} enforced rules`;
 }
 
+function recompile(): void {
+  writeProjection(compile(allEntries()));
+}
+
+/** Confirm a probationary rule's enforcement was intended (R1.21). */
+export function confirmCmd(id: string): string {
+  if (id === undefined || id === "") return "usage: precept confirm <id>";
+  let result: string;
+  try {
+    const next = withCardLock(id, () => {
+      const current = readCard(id);
+      const advanced = confirmOnce(current);
+      if (advanced === current) {
+        result = current.lifecycle === "operational"
+          ? `${id} is already operational`
+          : `${id} is not a probationary rule`;
+        return current;
+      }
+      writeCard(advanced);
+      result =
+        advanced.lifecycle === "operational"
+          ? `${id} graduated to operational after ${advanced.confirmations} confirmations`
+          : `${id} confirmed (${advanced.confirmations}/3)`;
+      return advanced;
+    });
+    if (next.lifecycle === "operational") recompile();
+    return result!;
+  } catch (e) {
+    return `cannot confirm ${id}: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+/** Reject a probationary rule: narrow its condition and reset (R1.20). */
+export function rejectCmd(args: string[]): string {
+  const [id, ...rest] = args;
+  if (id === undefined || id === "") return "usage: precept reject <id> [--condition C]";
+  let condition: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === "--condition") condition = rest[++i];
+  }
+  try {
+    withCardLock(id, () => {
+      const current = readCard(id);
+      const narrowed = narrowOnReject(current, condition);
+      if (narrowed === current) throw new Error("not a hard rule");
+      writeCard(narrowed);
+    });
+    recompile();
+    return condition !== undefined
+      ? `${id} narrowed to "${condition}" and reset`
+      : `${id} reset`;
+  } catch (e) {
+    return `cannot reject ${id}: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
 export function runCli(argv: string[]): string {
   const [cmd, ...rest] = argv;
   switch (cmd) {
@@ -119,8 +180,12 @@ export function runCli(argv: string[]): string {
       return reindexCmd();
     case "compile":
       return compileCmd();
+    case "confirm":
+      return confirmCmd(rest[0] ?? "");
+    case "reject":
+      return rejectCmd(rest);
     default:
-      return "commands: note, recall, list, remove, reindex, compile";
+      return "commands: note, recall, list, remove, reindex, compile, confirm, reject";
   }
 }
 

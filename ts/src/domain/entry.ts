@@ -192,6 +192,47 @@ function isoDate(s: string): boolean {
   return !Number.isNaN(Date.parse(s));
 }
 
+/** The confirmations a probationary rule needs before it graduates (R1.21). */
+export const GRADUATION_THRESHOLD = 3;
+
+/**
+ * Record one confirmation that a probationary rule's enforcement was intended
+ * (R1.21). At the threshold it graduates to operational. Bumps the version (the
+ * CAS token). A no-op on a rule that is not a probationary hard rule, which is
+ * what makes a double confirmation from two sessions safe. Pure.
+ */
+export function confirmOnce(
+  entry: Entry,
+  threshold: number = GRADUATION_THRESHOLD,
+): Entry {
+  if (entry.tier !== "hard" || entry.lifecycle !== "probationary") return entry;
+  const confirmations = (entry.confirmations ?? 0) + 1;
+  const graduated = confirmations >= threshold;
+  return {
+    ...entry,
+    version: entry.version + 1,
+    confirmations,
+    ...(graduated ? { lifecycle: "operational" as const } : {}),
+  };
+}
+
+/**
+ * The user says a probationary rule's enforcement was not intended (R1.20):
+ * narrow its recorded condition and reset the confirmation count, so it stays
+ * probationary under the tighter condition. Pure.
+ */
+export function narrowOnReject(entry: Entry, condition?: string): Entry {
+  if (entry.tier !== "hard") return entry;
+  return {
+    ...entry,
+    version: entry.version + 1,
+    confirmations: 0,
+    ...(condition !== undefined
+      ? { validity: { ...entry.validity, condition } }
+      : {}),
+  };
+}
+
 /** A probationary hard rule may never emit a deny (fitness function R1.19-R1.21). */
 export function canDeny(entry: Entry): boolean {
   return (
