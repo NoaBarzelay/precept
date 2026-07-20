@@ -9,7 +9,15 @@
 // agent's output (R1.1). Evidence ids are content-derived and appended only if
 // unseen, so a re-fired SessionEnd (a resumed session ending again) drafts
 // nothing twice without needing a cursor.
+//
+// When new evidence lands and the model backend is enabled, SessionEnd kicks
+// detection in a detached background process so the review queue fills on its
+// own (the objective's "continuous, mostly-implicit" half). It is fire-and-
+// forget and off the turn: the costly pass never becomes latency the user feels
+// (R1.1, R1.5), and it is gated on `PRECEPT_INFERENCE=cli` so the learning loop
+// spends tokens only when the user has opted in (N4, the ceiling they control).
 
+import { resolve } from "node:path";
 import {
   assembleFacts,
   emptyOutput,
@@ -21,6 +29,15 @@ import { appendEvidence, readEvidence } from "./record/evidence.ts";
 import { noteFault } from "./record/fault.ts";
 import { recordCall } from "./record/history.ts";
 
+/** The self-improvement loop runs automatically only when the backend is on. */
+export function shouldTriggerDetection(appended: number): boolean {
+  return (
+    appended > 0 &&
+    process.env.PRECEPT_INFERENCE === "cli" &&
+    process.env.PRECEPT_INFERENCE_SUBPROCESS !== "1"
+  );
+}
+
 /** Handle one hook event given its raw JSON, returning the hook's stdout. */
 export function runObservation(raw: string): string {
   if (process.env.PRECEPT_INFERENCE_SUBPROCESS === "1") return emptyOutput();
@@ -29,12 +46,33 @@ export function runObservation(raw: string): string {
     if (event.kind === "PostToolUse") {
       recordCall(assembleFacts(event));
     } else if (event.kind === "SessionEnd") {
-      observeSession(event);
+      const appended = observeSession(event);
+      if (shouldTriggerDetection(appended)) spawnDetection();
     }
   } catch (error) {
     noteFault("observation", error);
   }
   return emptyOutput();
+}
+
+/**
+ * Kick `precept detect` in a detached background process and return at once, so
+ * the finished session's evidence becomes queued candidates without blocking the
+ * SessionEnd hook or the user's shell. Fail-open: a spawn error is noted, never
+ * raised (D2).
+ */
+function spawnDetection(): void {
+  try {
+    const cli = resolve(import.meta.dir, "cli.ts");
+    const child = Bun.spawn([process.execPath, cli, "detect"], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    child.unref(); // do not keep the hook process alive waiting on it
+  } catch (error) {
+    noteFault("observation.detect", error);
+  }
 }
 
 /**

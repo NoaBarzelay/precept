@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Candidate } from "../src/domain/candidate.ts";
 import { review } from "../src/gate/gate.ts";
-import { observeSession, runObservation } from "../src/observation.ts";
+import {
+  observeSession,
+  runObservation,
+  shouldTriggerDetection,
+} from "../src/observation.ts";
 import { readEvidence } from "../src/record/evidence.ts";
 import { readHistory } from "../src/record/history.ts";
 
@@ -93,6 +97,20 @@ test("SessionEnd with no transcript path records nothing and does not throw", ()
   const out = runObservation(JSON.stringify({ hook_event_name: "SessionEnd", session_id: "s1" }));
   expect(JSON.parse(out).continue).toBe(true);
   expect(readEvidence()).toHaveLength(0);
+});
+
+test("detection is triggered only with new evidence and the backend enabled", () => {
+  const prior = process.env.PRECEPT_INFERENCE;
+  try {
+    process.env.PRECEPT_INFERENCE = "cli";
+    expect(shouldTriggerDetection(2)).toBe(true);
+    expect(shouldTriggerDetection(0)).toBe(false); // nothing new
+    delete process.env.PRECEPT_INFERENCE;
+    expect(shouldTriggerDetection(2)).toBe(false); // backend not opted in
+  } finally {
+    if (prior === undefined) delete process.env.PRECEPT_INFERENCE;
+    else process.env.PRECEPT_INFERENCE = prior;
+  }
 });
 
 test("a hard rule reachable only through prior history keeps its teeth", () => {

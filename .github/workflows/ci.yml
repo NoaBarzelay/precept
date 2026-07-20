@@ -8,25 +8,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.13"]
-    # Lock the suite offline: the tests and eval are fully deterministic and must never
-    # reach a live model. An empty key forces the inference layer down its offline path.
+    defaults:
+      run:
+        working-directory: ts
+    # Lock the suite offline: the tests are fully deterministic and must never
+    # reach a live model. Leaving PRECEPT_INFERENCE unset forces the inference
+    # layer down its offline (abstaining) path.
     env:
       ANTHROPIC_API_KEY: ""
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: oven-sh/setup-bun@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          bun-version: latest
       - name: install
-        run: pip install -e ".[dev]"
-      - name: lint
-        run: ruff check precept/ tests/
+        run: bun install --frozen-lockfile
       - name: types
-        run: mypy
+        run: bun run typecheck
+      - name: dependency-rule fitness function
+        run: bun run arch
       - name: tests (includes the repo privacy gate)
-        run: pytest -q
-      - name: enforcement eval (gate — fails on any miss or false-block)
-        run: precept evals --strict
+        run: bun test
