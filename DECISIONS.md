@@ -240,6 +240,20 @@ Recorded so the log matches the code, not just the intent above.
   judges intent from the raw turns, and evidence is recorded broadly so the R1.14 hindsight pass has
   the raw signal. Stored turns and payloads are capped (20k chars, truncation marked) so one generated
   file cannot bloat the append-only log.
+- **Install self-marks its hook commands rather than tracking them in a sidecar.** Each command
+  `install` writes into `~/.claude/settings.json` is prefixed with a `PRECEPT_MANAGED=1` shell
+  assignment, and the hook runs the entrypoint as `bun <absolute entrypoint path>` (the runtime is
+  `process.execPath`, absolute so Claude Code's own PATH need not include bun). Precept entries are then
+  identifiable in place, so install strips its own and re-adds (idempotent) and uninstall removes exactly
+  its own, leaving the user's hooks and every other setting untouched (N8, exact inverse). The marker is
+  a harmless env assignment nothing reads; it avoids adding a custom JSON key the host might reject, which
+  is why the Python reference keyed on a command-name prefix and this keys on the env marker (bun files
+  have no distinctive script name to key on). Writes go temp then atomic rename with a `.bak`. The
+  settings path is env-overridable (`PRECEPT_CLAUDE_HOME`) so tests never touch the real file. The
+  recursion guard is not install's concern: `CliClient` sets the `PRECEPT_INFERENCE_SUBPROCESS` sentinel
+  and `--setting-sources project` when it spawns `claude -p`, so a nested run no-ops Precept's user-source
+  hooks. PreToolUse registers the `*` matcher (guard every tool); per-tool narrowing for felt latency is a
+  later optimization regenerated on `compile`, not a correctness gap.
 - **Idempotency is content-derived ids plus dedup, not a cursor.** Each evidence id is an FNV-1a hash
   of its content (the turn window, or the path + agent output + final state), so re-processing the
   whole transcript re-yields the same id for an unchanged observation (the caller drops it) and a fresh

@@ -9,6 +9,7 @@ import {
   type Scope,
 } from "./domain/entry.ts";
 import { firing } from "./domain/validate.ts";
+import { install, registeredEvents, uninstall } from "./host/install.ts";
 import { ingestTranscriptFile } from "./host/transcript.ts";
 import { review } from "./gate/gate.ts";
 import { makeClient } from "./infer/cli_client.ts";
@@ -182,6 +183,18 @@ export function dismissCmd(args: string[]): string {
   return `dismissed ${id}`;
 }
 
+/** Register Precept's hooks in Claude Code's settings.json (N8). */
+export function installCmd(): string {
+  const path = install();
+  return `installed Precept hooks (${registeredEvents().join(", ")}) into ${path}`;
+}
+
+/** Remove exactly Precept's hooks from settings.json (the exact inverse, N8). */
+export function uninstallCmd(): string {
+  const path = uninstall();
+  return `removed Precept hooks from ${path}`;
+}
+
 /**
  * Read a finished session transcript and record the evidence it yields (the
  * manual counterpart to the SessionEnd observation trigger). Dedups by
@@ -294,6 +307,10 @@ export function runCli(argv: string[]): string {
       return rejectCmd(rest);
     case "firing":
       return firingCmd(rest[0] ?? "");
+    case "install":
+      return installCmd();
+    case "uninstall":
+      return uninstallCmd();
     case "ingest":
       return ingestCmd(rest);
     case "pending":
@@ -303,7 +320,7 @@ export function runCli(argv: string[]): string {
     case "dismiss":
       return dismissCmd(rest);
     default:
-      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing, ingest, detect, pending, keep, dismiss";
+      return "commands: install, uninstall, note, recall, list, remove, reindex, compile, confirm, reject, firing, ingest, detect, pending, keep, dismiss";
   }
 }
 

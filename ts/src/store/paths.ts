@@ -35,6 +35,19 @@ export function stateDir(): string {
   return join(base, "precept");
 }
 
+/**
+ * Claude Code's own config directory, where `install` registers the hooks.
+ * Env-overridable so a test never touches the real one.
+ */
+export function claudeHome(): string {
+  return process.env.PRECEPT_CLAUDE_HOME ?? join(homedir(), ".claude");
+}
+
+/** Claude Code's settings file: the install target. */
+export function claudeSettingsPath(): string {
+  return join(claudeHome(), "settings.json");
+}
+
 /** The derived FTS index database (rebuildable projection). */
 export function indexDbPath(): string {
   return join(stateDir(), "index.db");
