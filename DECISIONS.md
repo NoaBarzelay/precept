@@ -221,6 +221,22 @@ Recorded so the log matches the code, not just the intent above.
 - **Enforcement faults are returned, not logged in place.** `enforce` is pure (no IO); it returns
   the rules whose check threw, and the interception entrypoint records them, so fail-open stays
   recorded (N1) without giving the pure evaluator a dependency on the fault log.
+- **Transcript reading lives in `host`, and the evidence contract moved to `domain`.** The session
+  transcript is the host's own JSONL wire format, so parsing it belongs beside the hook-event parser
+  (`host/transcript.ts`), and a second host is a second adapter. `host` may not import `record`
+  (dependency rule), so the `EvidenceRecord` interface moved to `domain/evidence.ts` (the log
+  functions stay in `record/evidence.ts`, which re-exports the type); now `host` drafts evidence and
+  `record` persists it without either crossing the boundary. The provenance gate is the transcript's
+  own shape: a human-typed turn has string (or text-block) content and is neither a tool-result turn
+  nor a subagent (sidechain) turn, so only genuine user input can ever source a blocking entry.
+- **Silent edits are the agent's last write to a path versus its disk state.** The reader diffs the
+  final `Write`/`Edit` the agent made to each file against the file's current content (R1.1); a
+  matching or unreadable file yields no signal. The final-state read is injected, so assembly is
+  offline-testable. Signal kind is a cheap cue only (a correction-word regex tags correction vs
+  instruction); the detector still judges intent from the raw turns, and evidence is recorded broadly
+  so the R1.14 hindsight pass has the raw signal. A per-session cursor (count of entries consumed)
+  plus id-dedup makes a re-fired SessionEnd idempotent; a cursor past the end (rotated transcript)
+  restarts from zero.
 - **Not yet built, so not yet claimed as in-place** despite the intent above: the per-card version
   CAS and the lock around the primary commit path (only the lifecycle read-modify-write is locked
   today), `rewrite`/`updatedInput` as an outcome (the engine is deny/ask/allow), git as the

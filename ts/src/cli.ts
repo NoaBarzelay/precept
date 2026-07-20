@@ -9,11 +9,13 @@ import {
   type Scope,
 } from "./domain/entry.ts";
 import { firing } from "./domain/validate.ts";
+import { ingestTranscriptFile } from "./host/transcript.ts";
 import { review } from "./gate/gate.ts";
 import { makeClient } from "./infer/cli_client.ts";
 import { detect } from "./infer/detect.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
-import { readEvidence } from "./record/evidence.ts";
+import { readCursor, writeCursor } from "./record/cursor.ts";
+import { appendEvidence, readEvidence } from "./record/evidence.ts";
 import { readHistory } from "./record/history.ts";
 import { getPending, listPending, removePending } from "./record/queue.ts";
 import { Index } from "./retrieve/index.ts";
@@ -181,6 +183,46 @@ export function dismissCmd(args: string[]): string {
   return `dismissed ${id}`;
 }
 
+/**
+ * Read a finished session transcript and record the evidence it yields (the
+ * manual counterpart to the SessionEnd observation trigger). Advances the
+ * session cursor and dedups by evidence id, so re-running it is idempotent.
+ */
+export function ingestCmd(args: string[]): string {
+  const positional: string[] = [];
+  let session: string | undefined;
+  let repository: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--session") session = args[++i];
+    else if (a === "--repo") repository = args[++i];
+    else positional.push(a);
+  }
+  const path = positional[0];
+  if (path === undefined || path === "") {
+    return "usage: precept ingest <transcript.jsonl> [--session S] [--repo R]";
+  }
+  const sess = session ?? path;
+  const since = readCursor(sess);
+  const { evidence, consumed } = ingestTranscriptFile(
+    path,
+    { session: sess, ...(repository !== undefined ? { repository } : {}) },
+    { since },
+  );
+  const seen = new Set(readEvidence().map((e) => e.id));
+  let appended = 0;
+  for (const record of evidence) {
+    if (seen.has(record.id)) continue;
+    appendEvidence(record);
+    seen.add(record.id);
+    appended++;
+  }
+  writeCursor(sess, consumed);
+  return appended === 0
+    ? "ingested transcript; no new evidence (nothing new, or unreadable)"
+    : `ingested transcript; recorded ${appended} evidence record(s)`;
+}
+
 /** Run detection over recorded evidence with the configured backend. Async
  * because it consults the model; not routed through the sync dispatcher. */
 export async function detectCmd(): Promise<string> {
@@ -256,6 +298,8 @@ export function runCli(argv: string[]): string {
       return rejectCmd(rest);
     case "firing":
       return firingCmd(rest[0] ?? "");
+    case "ingest":
+      return ingestCmd(rest);
     case "pending":
       return pendingCmd();
     case "keep":
@@ -263,7 +307,7 @@ export function runCli(argv: string[]): string {
     case "dismiss":
       return dismissCmd(rest);
     default:
-      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing, detect, pending, keep, dismiss";
+      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing, ingest, detect, pending, keep, dismiss";
   }
 }
 

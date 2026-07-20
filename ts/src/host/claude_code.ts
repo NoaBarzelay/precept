@@ -39,6 +39,14 @@ export interface SessionStartEvent {
   readonly sessionId?: string;
 }
 
+/** Fires when a session ends: the observation path drafts evidence from it. */
+export interface SessionEndEvent {
+  readonly kind: "SessionEnd";
+  readonly transcriptPath?: string;
+  readonly cwd?: string;
+  readonly sessionId?: string;
+}
+
 export interface OtherEvent {
   readonly kind: "Other";
   readonly name: string;
@@ -47,6 +55,7 @@ export interface OtherEvent {
 export type HookEvent =
   | UserPromptSubmitEvent
   | SessionStartEvent
+  | SessionEndEvent
   | PreToolUseEvent
   | PostToolUseEvent
   | OtherEvent;
@@ -76,6 +85,15 @@ export function parseEvent(raw: string): HookEvent {
   if (name === "SessionStart") {
     return {
       kind: "SessionStart",
+      ...(cwd !== undefined ? { cwd } : {}),
+      ...(sessionId !== undefined ? { sessionId } : {}),
+    };
+  }
+  if (name === "SessionEnd") {
+    const transcriptPath = str(o.transcript_path) ?? str(o.transcriptPath);
+    return {
+      kind: "SessionEnd",
+      ...(transcriptPath !== undefined ? { transcriptPath } : {}),
       ...(cwd !== undefined ? { cwd } : {}),
       ...(sessionId !== undefined ? { sessionId } : {}),
     };

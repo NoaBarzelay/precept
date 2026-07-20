@@ -2,7 +2,7 @@
 
 State of the `ts/` rebuild so another session can continue it. The product spec is [../README.md](../README.md), the design is [../ARCHITECTURE.md](../ARCHITECTURE.md), the decisions are [../DECISIONS.md](../DECISIONS.md), and the module map is [README.md](README.md).
 
-As of this writing: **118 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
+As of this writing: **135 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
 
 ## How to resume
 
@@ -23,7 +23,7 @@ Two hard rules when committing here:
 1. **The repo-privacy CI gate scans `ts/` text files** for machine-specific markers (`/Users/<name>/`, phone numbers, the vault mount). Keep fixtures and code neutral (use `/work/...`), or CI fails.
 2. **A parallel session edits the Python source.** Stage only `ts/` and docs; never `git add` the Python files.
 
-## What is built (12 batches)
+## What is built (13 batches)
 
 | Area | Modules | Notes |
 |---|---|---|
@@ -37,15 +37,16 @@ Two hard rules when committing here:
 | Evidence validation | `record/history`, `observation.ts`, `domain/validate`, cli `firing` | Tool-call history (PostToolUse); `reachable`/`firing`/`subsumes` over recorded traffic. |
 | Live loop | `record/queue`, `infer/detect`, cli `detect`/`pending`/`keep`/`dismiss` | The learning loop runs end to end (fed evidence -> detect -> queue -> review -> catalog). |
 | Real backend | `infer/cli_client` | `CliClient` shells `claude -p` with native structured output + recursion guard; injected `Runner` so it is offline-testable; live-only spawn. `makeClient` selects by `PRECEPT_INFERENCE`. |
+| Transcript reader | `host/transcript`, `record/cursor`, `observation` (SessionEnd), cli `ingest` | Read a finished session transcript, draft evidence: a verbatim window of surrounding turns per human-typed turn (provenance gate on the transcript's own shape), and a silent-edit diff (agent's last write vs disk state, R1.1). Per-session cursor + id-dedup make a re-fired SessionEnd idempotent. This closes the automatic-learning loop: evidence is now self-produced, not only fed. |
 
-Entrypoints (the hook binaries): `interception.ts` (PreToolUse), `injection.ts` (SessionStart/UserPromptSubmit), `observation.ts` (PostToolUse), `cli.ts`. All no-op under the `PRECEPT_INFERENCE_SUBPROCESS` sentinel (fork-bomb guard).
+Entrypoints (the hook binaries): `interception.ts` (PreToolUse), `injection.ts` (SessionStart/UserPromptSubmit), `observation.ts` (PostToolUse + SessionEnd), `cli.ts`. All no-op under the `PRECEPT_INFERENCE_SUBPROCESS` sentinel (fork-bomb guard).
 
-CLI commands: `note recall list remove reindex compile confirm reject firing detect pending keep dismiss`.
+CLI commands: `note recall list remove reindex compile confirm reject firing ingest detect pending keep dismiss`.
 
 ## What is NOT built (the pickup list, roughly in priority order)
 
-1. **Transcript -> evidence reader.** The last piece for automatic learning. `detect` consumes `EvidenceRecord`s but nothing produces them from a live Claude Code session. Needs: read the session transcript, assemble evidence windows, and compute the silent-edit diff (agent output vs final file state) for R1.1. Wire it to a `SessionEnd` observation trigger. Until this exists, learning is fed, not self-running.
-2. **Install / plugin packaging.** The hook binaries exist but nothing wires them into `~/.claude/settings.json`. Needs an `install`/`uninstall` that registers the four entrypoints (with the `--setting-sources` and sentinel env), atomically and with exact-inverse removal (N8). Without this the system does not attach to Claude Code in real use.
+1. **Install / plugin packaging.** The hook binaries exist but nothing wires them into `~/.claude/settings.json`. Needs an `install`/`uninstall` that registers the entrypoints (interception on PreToolUse, injection on SessionStart/UserPromptSubmit, observation on PostToolUse/SessionEnd) with the `--setting-sources` and sentinel env, atomically and with exact-inverse removal (N8). Without this the system does not attach to Claude Code in real use, so the SessionEnd evidence reader (item just landed) never fires on its own.
+2. **A cost gate before the model on detect.** The transcript reader records evidence broadly (every human turn + silent edits), by design, so the R1.14 hindsight pass keeps the raw signal. But `detect` then calls the model once per evidence record. A cheap recall-biased pre-filter (the correction cue already exists as a signal-kind tag) should gate the model call so an ordinary instruction turn does not spend one. Until then, `detect` over a real session is one model call per human turn.
 3. **Currency / governance sweeps** (R1.9-R1.12, R2.8-R2.11). `retired`/`superseded` statuses exist and are excluded from retrieval, but nothing transitions an entry into them. `validate.subsumes` is built but unused. Needs a scheduled maintenance path: validity sweep, supersede, conflict detection, override/divergence reconfirmation. This is the Risk-4 mitigation; currently `isLive`'s stale-exclusion is vacuous.
 4. **Correcting the inference from deltas** (R1.13). `deltaBetween` is computed and stored in decision records; nothing feeds it back into `infer` (no exemplar/standing-instruction/calibration). Recording half only.
 5. **Turn-end judgment tier** (R1.18, N13). A `Stop` entrypoint for structural checks (needs a parser, tree-sitter, off the hot path) and the model-verdict tier. Deferred by design.
