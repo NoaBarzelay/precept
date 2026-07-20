@@ -1,53 +1,51 @@
 # Roadmap
 
-What is shipped is in the README (the three entity types, the deterministic eval, the enforcement core). This is the planned direction, with the reason for each item and its state, ordered by what deepens the core thesis. The engine is being rebuilt in TypeScript as a strangler over the shared catalog; the design and the delivery sequencing are in [ARCHITECTURE.md](ARCHITECTURE.md), and several items below are reframed by it.
+Precept runs the full loop end to end today, installed and self-running; the planned work deepens and hardens it rather than completing a missing half. The design for each item is in [ARCHITECTURE.md](ARCHITECTURE.md) and [DECISIONS.md](DECISIONS.md); build status is in [ts/STATUS.md](ts/STATUS.md).
 
-## The TypeScript rebuild
+## Built
 
-The move to TypeScript on Bun ([docs/LANGUAGE.md](docs/LANGUAGE.md)) is not a rewrite from zero: the markdown cards are the language-agnostic source of truth, so the Python and TypeScript builds operate on the same catalog and a working system exists at every step. Sequencing and the two-runtime coordination model are in [ARCHITECTURE.md](ARCHITECTURE.md), section 10. **Build status and the full pickup list for the rebuild live in [ts/STATUS.md](ts/STATUS.md).**
+The whole spine of both objectives, end to end, offline-tested and installed as the live hooks.
 
-*Substantially built (as of the current pass, in `ts/`, 118 offline tests):* the check language and evaluator, the entry model and card store, FTS retrieval, the full write path (evidence -> detect -> review queue -> gate -> catalog), the enforcement hot path (interception over a compiled projection, with scope compiled into the check), the probation lifecycle, evidence-based validation against recorded tool-call history, the live learning loop, and the real `claude -p` inference backend behind an injected seam. The whole loop runs end to end; the model backend is the only part not exercised in CI.
+- **Observe.** Installed as the Claude Code hooks (`install` and `uninstall`, an exact inverse). Each finished session's transcript becomes evidence: a verbatim window per human-typed turn behind the provenance gate, and a silent-edit diff of the agent's output against the file's final state (R1.1).
+- **Infer.** A cost-gated model backend (`claude -p`) proposes at most one durable item per evidence window or abstains (R1.2); a plain task turn spends no call. On SessionEnd the loop runs itself in the background when the backend is enabled.
+- **Review and record.** Nothing reaches the catalog except through the human gate, and every decision is an immutable record that retains the proposed-and-committed delta (N6, N7). Only a user-typed turn may source a blocking entry.
+- **Store and retrieve.** Governed markdown cards under a versioned frontmatter contract; full-text retrieval, validity-filtered and budgeted, injected per prompt as the relevant slice (O2).
+- **Enforce.** Live hard rules compile to a plain-JSON check cache the interception hook reads and evaluates deterministically, as deny, ask, or allow, failing open and recording faults (N1). No model, parser, or schema library runs on the hot path, held by a fitness function. A new rule is probationary until three confirmations graduate it (R1.19-R1.21).
+- **Keep current.** Retire and supersede transitions that invalidate rather than delete, and review-time surfacing of a near-duplicate to reconcile (R1.4).
 
-*Not yet built (the near-term pickup order, detailed in [ts/STATUS.md](ts/STATUS.md)):* the transcript-to-evidence reader (the last piece that makes learning self-running rather than fed), install/plugin packaging that wires the hook binaries into `settings.json`, the currency/governance sweeps (retire/supersede/conflict), feeding decision deltas back into inference (R1.13), the turn-end judgment tier (R1.18), full write-path compare-and-swap, and the always-on convention writer.
+## Planned
 
-## Near-term hardening
+None of the below is required for the loop to run. They deepen the learning half, add the judgment tier that is deferred by design, and harden, optimize, and measure the system. Each is mapped to the requirement it serves or the risk it mitigates.
 
-- **Check language and evidence-based validation.** The regex matcher path is replaced by a small, auditable check language: lexical checks in front of the call, structural checks at turn end. Checks are validated against recorded tool-call history, not proved symbolically, and the review gate shows a rule's real firing history instead of a rationale. This retires the ReDoS and recursion guard class: a linear-time regex engine removes the backtracking hazard, so there is no catastrophic pattern to guard against. Design in [ARCHITECTURE.md](ARCHITECTURE.md) section 5.1 and [DECISIONS.md](DECISIONS.md). *Designed, part of the rebuild.*
-- **ReDoS and recursion guards (Python reference implementation).** *Shipped, being retired.* `precept/safe_regex.py` rejects catastrophic patterns at compile and bounds every match at enforce; the recursion guard stops a nested `claude -p` hook from re-firing. Both stay in the Python build until the check-language seam migrates, after which the linear-time engine makes the ReDoS guard unnecessary.
-- **Check-fidelity eval.** The deterministic eval proves the engine is correct over hand-written checks. It does not prove that the check drawn from a correction captures the intent; a too-broad check can pass and over-block. Plan: a per-entry eval that the generated check blocks the violating call and allows a held-out compliant one, closing the gap between "engine correct" and "check correct." *Planned.*
-- **Publish the cost model.** The token meter is built; the numbers are not yet surfaced. Plan: report measured per-flow token and latency cost (detection, judgment verdict) and the relevance-gate skip rate, so "a model call per turn" is a measurement, not a worry. *Instrument built, reporting pending.*
-- **Contract-drift detection.** Hard enforcement rides Claude Code's unversioned hook and permission contract; a change to the event shape or the block-signaling schema can silently downgrade a rule to a no-op, and because the runtime fails open the break leaves no error. Today's startup check only verifies that hooks are registered and on PATH, not that the wired path still blocks. Plan: a startup and version-triggered check that drives a known-blocked action through the live surface and asserts it is still denied, plus inbound-event validation that records an unparseable event as a health signal instead of a silent allow. *Planned.*
+### Learning loop (O1, O2)
 
-## Coverage and measurement
+- **Currency sweep, part 2** (R1.9, R1.11, R1.12). An off-turn `maintain` pass that expires an entry past its `validUntil`, resets an operational hard rule to probationary when recorded history shows its check matched a call that still executed, and reports a rule whose check a live rule subsumes. Part 1 (the retire and supersede transitions, review-time duplicate surfacing) is built; the rest is designed in DECISIONS.md.
+- **Inference correction from deltas** (R1.13). Every decision records the delta between what was proposed and what was committed, and nothing consumes it. Fold it back into inference, so a similar correction becomes an exemplar for the next inference, a repeated correction a standing rule on the inference step, and the keep and dismiss record calibrates scope.
+- **Hindsight audit** (R1.14). A scheduled, lower-threshold pass over retained evidence that recovers a preference the live detector missed and calibrates detection. Evidence is retained append-only for exactly this; the pass is unbuilt.
 
-- **Wire the paired live eval to real sessions.** The paired, CI-aware harness that reports the corrected-behavior delta with a 95% confidence interval is built; connecting it to live agent runs and publishing the delta with its error bars is the next step. The deterministic confusion-matrix number stays the headline until then. *Harness built, live wiring pending.*
-- **In-the-wild false-block capture.** Log every hard block and let me flag a wrong one, so precision and coverage become self-collecting signals rather than an assertion. *Planned.*
+### Enforcement
 
-## Retrieval
+- **Turn-end judgment tier** (R1.18, N13). A `Stop` entrypoint for structural checks, a parser kept off the hot path, and the model-verdict tier for a requirement no mechanical check can express. Deferred by design.
+- **Check synthesis from a correction** (R1.17). A hard rule commits only when the model supplies a check, so a model-proposed rule lands as guidance. Synthesizing the check from the correction moves more of the must-hold few onto the deterministic tier.
+- **Input-rewrite outcome** (ARCHITECTURE 6.4). The engine is deny, ask, and allow; the rewrite outcome is designed and not built.
 
-- **Earn semantic recall with a number.** Knowledge retrieval is keyword-first (full-text, BM25). Vector embeddings are deferred behind a condition, not skipped: add an embedding index only if a Recall@k eval shows keyword search actually missing on these terse, jargon-dense cards, the regime where single-vector embeddings often underperform keyword. A dense arm, if earned, is brute-force cosine over a few hundred vectors, no SQLite extension. *Gated on an unrun eval.*
-- **Close the one conformance gap.** Global conventions currently load always-on rather than just-in-time; the fix is activity-keyed retrieval through the existing knowledge seam, bringing retrieval in line with the finite-context guidance. *Planned, documented in `docs/ANTHROPIC-CONFORMANCE.md`.*
+### Placement and injection
 
-## The remaining entity types (6 of 9)
+- **Convention writer** (R1.7, R1.8). A convention loads through Precept's injected context rather than the host's own scoping. Write it into `.claude/rules/`, under an always-on line cap, so it loads by the mechanism its type calls for.
+- **SessionStart injection** (R1.8). A no-op until the bounded always-on set exists.
+- **Per-tool hook narrowing** (ARCHITECTURE 5.4). Install registers PreToolUse on the `*` matcher, so interception spawns on every tool call. Registering only the tools a rule references, regenerated on `compile`, is what makes most turns invoke Precept zero times.
 
-Three entity types are shipped (Rule, Knowledge note, Convention). The other six ride the same spine and the same review gate, and differ only in their commit target, so each is a bounded addition rather than a new system:
+### Knowledge (O2)
 
-| Type | Commits to | State |
-|------|-------------|-------|
-| Skill | `.claude/skills/<name>/SKILL.md` | designed |
-| Agent persona | `.claude/agents/<name>.md` (hard tool-scope plus soft prompt) | designed |
-| Output style | `.claude/output-styles/<name>.md` | designed |
-| Slash command | `.claude/commands` / `.claude/skills` | designed |
-| MCP / tool config | `.mcp.json` / `mcpServers` | designed |
-| Permission profile | `settings.json` `permissions` | partial (import plus clean-ban write-back) |
+- **Vault integration.** Governed knowledge lives as catalog cards and injects per prompt, which is the O2 mechanism. Filing into the Obsidian vault is not carried into the rebuild; revisit it, behind the same review gate, if vault-native knowledge that is browsable and wikilinked is wanted.
 
-Order is set by the catalog itself: whichever correction type shows up most in real usage is built next. The catalog is the demand signal.
+### Durability
 
-## Portability (host-drift)
+- **Write-path compare-and-swap** (ARCHITECTURE 7). Only the lifecycle read-modify-write bumps `version` under the card lock; `writeCard` does a plain atomic rename. The per-card CAS closes the window where two writers clobber.
+- **Git as transaction-time** (ARCHITECTURE 7). The bi-temporal model names git history as transaction-time; asserted, not yet read by code.
 
-Precept targets Claude Code's hook and settings contract today, behind an adapter. The contract can change, and other agent hosts are starting to expose enforcement surfaces. Plan: keep the catalog and the hard/soft model host-agnostic, and let the adapter compile the same entries to other hosts as they expose deny and gate mechanisms. The typed catalog is the durable asset; the compile target is swappable.
+### Measurement
 
-## Distribution
-
-- **MCP server over the catalog and review gate.** *Shipped.* A local stdio MCP server exposes four tools (catalog search, entity show, review pending, review decide), so any local MCP client can drive the human-in-the-loop review conversationally. Optional extra; the core stays lean. Publishing to the official MCP registry is a later step.
-- **Claude Code plugin packaging.** *Planned.* Bundle the hooks and the MCP server into one versioned plugin so install becomes one command instead of settings mutation.
+- **Enforcement-quality eval.** A confusion-matrix gate over a golden set of checks and calls. CI runs the dependency-rule, interception, and behavior suites; this quality gate is not yet ported.
+- **Cost and latency metering** (Risk 5). Measure the loop's token spend and its added delay and alert on a threshold, so a step that grows too expensive surfaces before it is set aside.
+- **Install health and contract drift** (ARCHITECTURE 11). A check that the wired hooks still fire and still block, so a silent change to the host contract surfaces instead of degrading a rule to a no-op, plus a cold-start pass that seeds an initial catalog from the existing setup.
