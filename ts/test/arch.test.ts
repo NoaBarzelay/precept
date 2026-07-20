@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
 import { Glob } from "bun";
-import { dirname, relative } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 // The dependency rule from ARCHITECTURE.md section 5.3, as an executable
-// fitness function. Each module may import only the modules listed here.
-// A missing key means "no cross-module imports allowed" (a leaf).
+// fitness function. Each module (a directory under src/) and each top-level
+// entrypoint file may import only the modules listed here.
+//
+// Modules form the tiered core. Entrypoints (cli, injection, and later
+// interception) are orchestrators: they drive the modules, so they are allowed
+// to import from more of them.
 const ALLOWED: Record<string, string[]> = {
   domain: [],
   store: ["domain"],
@@ -14,39 +18,33 @@ const ALLOWED: Record<string, string[]> = {
   infer: ["domain", "store", "retrieve", "record"],
   gate: ["domain", "store", "retrieve", "record"],
   eval: ["domain", "store", "retrieve", "record"],
-  cli: ["domain", "store", "retrieve", "record"],
+  // Orchestration entrypoints.
+  cli: ["domain", "store", "retrieve", "record", "gate", "infer", "host"],
+  injection: ["domain", "store", "retrieve", "host"],
 };
 
 const MODULES = new Set(Object.keys(ALLOWED));
 const SRC = new URL("../src/", import.meta.url).pathname;
 
-function moduleOf(path: string): string | null {
-  // path relative to src/, e.g. "domain/entry.ts" -> "domain"
-  const rel = relative(SRC, path);
-  const top = rel.split("/")[0];
-  if (top === undefined) return null;
-  // A file directly in src/ (e.g. cli.ts) is its own module by basename.
-  if (!rel.includes("/")) return top.replace(/\.ts$/, "");
-  return top;
+/** The module a source file belongs to: its top directory, or its basename
+ * when it sits directly in src/ (an entrypoint). */
+function moduleOf(absPath: string): string {
+  const rel = relative(SRC, absPath);
+  if (!rel.includes("/")) return rel.replace(/\.ts$/, "");
+  return rel.split("/")[0]!;
 }
 
-function importedModules(source: string): string[] {
+/** Resolve each relative import to the module it targets. */
+function importedModules(absPath: string, source: string): string[] {
+  const dir = dirname(absPath);
   const out: string[] = [];
   const re = /(?:import|export)[^'"]*?from\s*['"]([^'"]+)['"]/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(source)) !== null) {
     const spec = m[1]!;
-    // Only relative imports can cross internal module boundaries.
-    if (!spec.startsWith(".")) continue;
-    // First path segment after leaving the current dir names the target module.
-    const parts = spec.replace(/^\.\//, "").split("/");
-    if (spec.startsWith("../")) {
-      // "../store/x" -> store ; "../cli" -> cli
-      const seg = parts.filter((p) => p !== "..");
-      const first = seg[0];
-      if (first) out.push(first.replace(/\.ts$/, ""));
-    }
-    // "./x" stays inside the same module, ignore.
+    if (!spec.startsWith(".")) continue; // only relative imports cross boundaries
+    const target = moduleOf(resolve(dir, spec));
+    out.push(target);
   }
   return out;
 }
@@ -56,12 +54,11 @@ test("no source module violates the dependency rule", async () => {
   const violations: string[] = [];
   for await (const file of glob.scan({ cwd: SRC, absolute: true })) {
     const mod = moduleOf(file);
-    if (mod === null || !MODULES.has(mod)) continue;
+    if (!MODULES.has(mod)) continue;
     const allowed = new Set(ALLOWED[mod]);
     const src = await Bun.file(file).text();
-    for (const target of importedModules(src)) {
-      if (target === mod) continue;
-      if (!MODULES.has(target)) continue;
+    for (const target of importedModules(file, src)) {
+      if (target === mod || !MODULES.has(target)) continue;
       if (!allowed.has(target)) {
         violations.push(`${mod} imports ${target} (${relative(SRC, file)})`);
       }
@@ -71,17 +68,15 @@ test("no source module violates the dependency rule", async () => {
 });
 
 test("the interception path imports nothing heavy", async () => {
-  // ARCHITECTURE 5.3: the interception path is host + domain + record only,
-  // and may not import infer, gate, retrieve, a parser, or a schema library.
-  const forbidden = ["infer", "gate", "retrieve"];
-  const guardPath = new URL("../src/host/interception.ts", import.meta.url)
-    .pathname;
-  const f = Bun.file(guardPath);
-  if (!(await f.exists())) return; // not built yet; enforced once it exists
+  // ARCHITECTURE 5.3: the interception path is host + domain + record plus the
+  // compiled projection, and may not import infer, gate, retrieve, a parser, or
+  // a schema library. Enforced once the interception entrypoint exists.
+  const path = new URL("../src/interception.ts", import.meta.url).pathname;
+  const f = Bun.file(path);
+  if (!(await f.exists())) return;
   const src = await f.text();
-  for (const target of importedModules(src)) {
-    expect(forbidden).not.toContain(target);
+  for (const target of importedModules(path, src)) {
+    expect(["infer", "gate", "retrieve"]).not.toContain(target);
   }
   expect(src).not.toMatch(/from ['"](zod|valibot|arktype|@sinclair)/);
-  expect(dirname(guardPath)).toContain("host");
 });

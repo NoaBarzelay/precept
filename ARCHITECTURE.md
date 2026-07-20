@@ -122,17 +122,25 @@ The decomposition departs from a module-per-processing-step layout in two places
 ### 5.3 Dependency rule
 
 ```
-domain          imports nothing
-store           imports domain
-host, record    import domain, store
-retrieve        imports domain, store
-infer, gate,
-eval, cli       import domain, store, retrieve, record
+Modules (the tiered core):
+  domain          imports nothing
+  store           imports domain
+  host, record    import domain, store
+  retrieve        imports domain, store
+  infer, gate,
+  eval            import domain, store, retrieve, record
+
+Entrypoints (orchestrators over the modules):
+  injection       imports host, retrieve, domain
+  cli             imports gate, infer, host, retrieve, store, domain
+  interception    imports host, domain, record (the thin hot path)
 
 infer  is the only module that may reach the network
 host   is the only module that may know the Claude Code contract
 store  is the only module that may write to disk
 ```
+
+Modules form the tier; entrypoints drive them. An entrypoint may import more of the modules than a module may, because it is the orchestration layer, not a peer. The one entrypoint held to the module discipline is `interception`, whose whole point is to stay thin. The dependency rule is a CI fitness function (section 9) that resolves every relative import to its module and rejects a crossing the table above does not permit.
 
 `record` is not a leaf. Its contents live in operational state, whose layout, atomicity, and locking are `store`'s hidden decision, so `record` writes through `store` like everything else. Making it a leaf would put a second uncoordinated writer on the tier section 7 exists to close.
 

@@ -9,14 +9,17 @@
 
 import {
   closeSync,
+  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
+  rmSync,
   writeSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Check } from "../domain/check.ts";
 import { type Entry, entryError } from "../domain/entry.ts";
@@ -119,6 +122,29 @@ export function writeCard(entry: Entry): string {
 /** Read and validate a card by id. Throws if missing or invalid. */
 export function readCard(id: string): Entry {
   return parse(readFileSync(cardPath(id), "utf8"));
+}
+
+/** All entry ids on disk, sorted. */
+export function listEntryIds(): string[] {
+  const dir = entriesDir();
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".md") && !f.startsWith("."))
+    .map((f) => f.slice(0, -3))
+    .sort();
+}
+
+/** All entries on disk. */
+export function allEntries(): Entry[] {
+  return listEntryIds().map(readCard);
+}
+
+/** Hard-delete a card (R1.16 removal). Returns true if it existed. */
+export function removeCard(id: string): boolean {
+  const path = cardPath(id);
+  if (!existsSync(path)) return false;
+  rmSync(path);
+  return true;
 }
 
 function fsyncDir(dir: string): void {

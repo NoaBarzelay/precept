@@ -1,0 +1,6 @@
+{
+  "session_id": "abc123",
+  "cwd": "/Users/x/code/acme-api",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}

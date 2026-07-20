@@ -42,6 +42,16 @@ export function sectionize(content: string): Section[] {
   return out.length > 0 ? out : [{ anchor: "", text: content.trim() }];
 }
 
+// Common English words carry no retrieval signal and cause spurious OR matches.
+const STOPWORDS = new Set<string>([
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+  "of", "on", "in", "at", "to", "for", "and", "or", "but", "if", "then",
+  "what", "where", "when", "who", "why", "how", "which", "does", "do", "did",
+  "this", "that", "these", "those", "it", "its", "with", "as", "by", "from",
+  "i", "you", "we", "they", "he", "she", "can", "could", "would", "should",
+  "will", "my", "your", "our", "me", "us", "so", "not", "no", "yes", "up",
+]);
+
 export interface Hit {
   readonly id: string;
   readonly kind: string;
@@ -107,8 +117,11 @@ export class Index {
   search(query: string, opts: { limit?: number; floor?: number } = {}): Hit[] {
     const limit = opts.limit ?? 8;
     const floor = opts.floor ?? 0;
-    const tokens = query.match(/[A-Za-z0-9_]+/g);
-    if (tokens === null || tokens.length === 0) return [];
+    const raw = query.toLowerCase().match(/[a-z0-9_]+/g);
+    if (raw === null) return [];
+    // Drop stopwords so a common word like "is" cannot spuriously match.
+    const tokens = raw.filter((t) => !STOPWORDS.has(t));
+    if (tokens.length === 0) return [];
     const match = tokens.map((t) => `"${t}"`).join(" OR ");
 
     const rows = this.db
