@@ -1,0 +1,7 @@
+node_modules/
+*.tsbuildinfo
+# Local-first: derived state and any populated catalog never get tracked.
+.precept-state/
+*.db
+*.db-wal
+*.db-shm
