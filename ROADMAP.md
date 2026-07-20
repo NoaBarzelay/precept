@@ -4,7 +4,11 @@ What is shipped is in the README (the three entity types, the deterministic eval
 
 ## The TypeScript rebuild
 
-The core loop is built in Python. The move to TypeScript on Bun ([docs/LANGUAGE.md](docs/LANGUAGE.md)) is not a rewrite from zero: the markdown cards are the language-agnostic source of truth, so the Python and TypeScript builds operate on the same catalog and a working system exists at every step. It is sequenced by value per session, not by the dependency graph: knowledge (O2) first, since a saved fact pays off the next session; then the hot enforcement path, the smallest self-contained piece; then preference-enforcement authoring (O1), which depends on accumulated corrections. Full sequencing and the two-runtime coordination model are in [ARCHITECTURE.md](ARCHITECTURE.md), section 10. *In progress.*
+The move to TypeScript on Bun ([docs/LANGUAGE.md](docs/LANGUAGE.md)) is not a rewrite from zero: the markdown cards are the language-agnostic source of truth, so the Python and TypeScript builds operate on the same catalog and a working system exists at every step. Sequencing and the two-runtime coordination model are in [ARCHITECTURE.md](ARCHITECTURE.md), section 10. **Build status and the full pickup list for the rebuild live in [ts/HANDOFF.md](ts/HANDOFF.md).**
+
+*Substantially built (as of the current pass, in `ts/`, 118 offline tests):* the check language and evaluator, the entry model and card store, FTS retrieval, the full write path (evidence -> detect -> review queue -> gate -> catalog), the enforcement hot path (interception over a compiled projection, with scope compiled into the check), the probation lifecycle, evidence-based validation against recorded tool-call history, the live learning loop, and the real `claude -p` inference backend behind an injected seam. The whole loop runs end to end; the model backend is the only part not exercised in CI.
+
+*Not yet built (the near-term pickup order, detailed in [ts/HANDOFF.md](ts/HANDOFF.md)):* the transcript-to-evidence reader (the last piece that makes learning self-running rather than fed), install/plugin packaging that wires the hook binaries into `settings.json`, the currency/governance sweeps (retire/supersede/conflict), feeding decision deltas back into inference (R1.13), the turn-end judgment tier (R1.18), full write-path compare-and-swap, and the always-on convention writer.
 
 ## Near-term hardening
 
