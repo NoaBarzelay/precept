@@ -2,7 +2,7 @@
 
 State of the `ts/` rebuild so another session can continue it. The product spec is [../README.md](../README.md), the design is [../ARCHITECTURE.md](../ARCHITECTURE.md), the decisions are [../DECISIONS.md](../DECISIONS.md), and the module map is [README.md](README.md).
 
-As of this writing: **135 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
+As of this writing: **142 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
 
 ## How to resume
 
@@ -37,7 +37,7 @@ Two hard rules when committing here:
 | Evidence validation | `record/history`, `observation.ts`, `domain/validate`, cli `firing` | Tool-call history (PostToolUse); `reachable`/`firing`/`subsumes` over recorded traffic. |
 | Live loop | `record/queue`, `infer/detect`, cli `detect`/`pending`/`keep`/`dismiss` | The learning loop runs end to end (fed evidence -> detect -> queue -> review -> catalog). |
 | Real backend | `infer/cli_client` | `CliClient` shells `claude -p` with native structured output + recursion guard; injected `Runner` so it is offline-testable; live-only spawn. `makeClient` selects by `PRECEPT_INFERENCE`. |
-| Transcript reader | `host/transcript`, `record/cursor`, `observation` (SessionEnd), cli `ingest` | Read a finished session transcript, draft evidence: a verbatim window of surrounding turns per human-typed turn (provenance gate on the transcript's own shape), and a silent-edit diff (agent's last write vs disk state, R1.1). Per-session cursor + id-dedup make a re-fired SessionEnd idempotent. This closes the automatic-learning loop: evidence is now self-produced, not only fed. |
+| Transcript reader | `host/transcript`, `observation` (SessionEnd), cli `ingest` | Read a finished session transcript, draft evidence: a verbatim window of surrounding turns per human-typed turn (provenance gate on the transcript's own shape), and a kind-aware silent-edit diff (full `Write` by equality, `Edit`/`MultiEdit`/`NotebookEdit` fragment by presence, agent output vs disk state, R1.1). Content-derived evidence ids + id-dedup make a re-fired SessionEnd idempotent (no cursor), robust to a compacted/rotated transcript. This closes the automatic-learning loop: evidence is now self-produced, not only fed. |
 
 Entrypoints (the hook binaries): `interception.ts` (PreToolUse), `injection.ts` (SessionStart/UserPromptSubmit), `observation.ts` (PostToolUse + SessionEnd), `cli.ts`. All no-op under the `PRECEPT_INFERENCE_SUBPROCESS` sentinel (fork-bomb guard).
 

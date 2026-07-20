@@ -37,8 +37,15 @@ export interface TranscriptEntry {
 
 export interface FileWrite {
   readonly path: string;
-  /** What the agent wrote: a Write's content, or an Edit's replacement text. */
-  readonly agentOutput: string;
+  /**
+   * `full` when the agent wrote the whole file (a `Write`); `fragment` when it
+   * authored snippets within it (an `Edit`/`MultiEdit`/`NotebookEdit`). The two
+   * are diffed against the final file differently: a full write by equality, a
+   * fragment by whether it still appears in the file.
+   */
+  readonly kind: "full" | "fragment";
+  /** full: the one whole-file content. fragment: each snippet the agent wrote. */
+  readonly outputs: readonly string[];
 }
 
 /** Reads a file's final on-disk state; injected so the assembler is testable. */
@@ -53,17 +60,9 @@ const defaultReader: FinalStateReader = (path) => {
 };
 
 export interface AssembleOptions {
-  /** How many entries were already consumed for this session (the cursor). */
-  readonly since?: number;
   /** Turns of surrounding context each human-turn window carries. */
   readonly window?: number;
   readonly readFinalState?: FinalStateReader;
-}
-
-export interface AssembleResult {
-  readonly evidence: readonly EvidenceRecord[];
-  /** The number of entries now consumed: the cursor to persist. */
-  readonly consumed: number;
 }
 
 // Cheap, recall-biased cues that a user turn is a correction rather than a fresh
@@ -73,7 +72,29 @@ export interface AssembleResult {
 const CORRECTION_CUES =
   /\b(no|nope|don'?t|never|not|stop|actually|instead|wrong|should(?:'?ve| have)?|again|undo|revert|isn'?t|aren'?t)\b/i;
 
-const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+// The evidence log is append-only and unbounded, so a single generated file
+// must not blow it up. Stored turns and silent-edit payloads are capped; the
+// cap is generous (a real correction or diff is far smaller) and a truncation
+// marker keeps the record honest for the R1.14 hindsight pass.
+const MAX_STORED = 20_000;
+
+function cap(s: string): string {
+  return s.length <= MAX_STORED ? s : `${s.slice(0, MAX_STORED)}\n[...truncated]`;
+}
+
+// A stable, position-independent FNV-1a hash. Evidence ids are content-derived,
+// not index-derived, so a rotated or compacted transcript re-processed from the
+// start yields the SAME id for an unchanged observation (deduped) and a fresh id
+// for a genuinely new one (recorded). The cursor is then a pure optimisation;
+// dedup by id is the correctness guarantee for idempotency.
+function hash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
 
 interface RawLine {
   readonly type?: unknown;
@@ -104,17 +125,20 @@ export function parseTranscript(raw: string): TranscriptEntry[] {
 }
 
 function narrow(o: RawLine): TranscriptEntry {
-  const type = str(o.type);
+  // Key on the message's own role, not the entry's `type`. The host contract is
+  // unversioned and has moved before (constraint 2); a stricter narrowing would
+  // fail toward dropping a real turn rather than toward capture. The entry may
+  // carry the message inline, so fall back to the entry itself.
   const msg =
     typeof o.message === "object" && o.message !== null
       ? (o.message as Record<string, unknown>)
-      : undefined;
-  const role = str(msg?.role);
+      : (o as unknown as Record<string, unknown>);
+  const role = str(msg.role);
   const at = str(o.timestamp);
   const cwd = str(o.cwd);
   const sidechain = o.isSidechain === true;
-  if (type === "user" && role === "user") {
-    const { text, isToolResult } = userText(msg?.content);
+  if (role === "user") {
+    const { text, isToolResult } = userText(msg.content);
     return {
       role: "user",
       text,
@@ -126,8 +150,8 @@ function narrow(o: RawLine): TranscriptEntry {
       ...(cwd !== undefined ? { cwd } : {}),
     };
   }
-  if (type === "assistant" && role === "assistant") {
-    const content = msg?.content;
+  if (role === "assistant") {
+    const content = msg.content;
     return {
       role: "assistant",
       text: assistantText(content),
@@ -174,7 +198,7 @@ function assistantText(content: unknown): string {
   return parts.join(" ").trim();
 }
 
-/** The files a turn's tool calls wrote, with the text the agent wrote to each. */
+/** The files a turn's tool calls wrote, tagged full (whole file) or fragment. */
 function fileWrites(content: unknown): FileWrite[] {
   if (!Array.isArray(content)) return [];
   const out: FileWrite[] = [];
@@ -183,18 +207,53 @@ function fileWrites(content: unknown): FileWrite[] {
     const block = b as Record<string, unknown>;
     if (block.type !== "tool_use") continue;
     const name = str(block.name);
-    if (name === undefined || !WRITE_TOOLS.has(name)) continue;
+    if (name === undefined) continue;
     const input =
       typeof block.input === "object" && block.input !== null
         ? (block.input as Record<string, unknown>)
         : {};
     const path = str(input.file_path) ?? str(input.notebook_path) ?? str(input.path);
     if (path === undefined) continue;
-    const agentOutput = str(input.content) ?? str(input.new_string) ?? str(input.new_source);
-    if (agentOutput === undefined) continue;
-    out.push({ path, agentOutput });
+    if (name === "Write") {
+      const whole = str(input.content);
+      if (whole !== undefined) out.push({ path, kind: "full", outputs: [whole] });
+    } else if (name === "Edit") {
+      const frag = str(input.new_string);
+      if (frag !== undefined) out.push({ path, kind: "fragment", outputs: [frag] });
+    } else if (name === "NotebookEdit") {
+      const frag = str(input.new_source);
+      if (frag !== undefined) out.push({ path, kind: "fragment", outputs: [frag] });
+    } else if (name === "MultiEdit") {
+      // A sequence of replacements; each new_string is a fragment authored into
+      // the file. Recorded together so the divergence test sees every one.
+      const edits = Array.isArray(input.edits) ? input.edits : [];
+      const outputs: string[] = [];
+      for (const e of edits) {
+        if (typeof e !== "object" || e === null) continue;
+        const frag = str((e as Record<string, unknown>).new_string);
+        if (frag !== undefined) outputs.push(frag);
+      }
+      if (outputs.length > 0) out.push({ path, kind: "fragment", outputs });
+    }
   }
   return out;
+}
+
+/**
+ * Whether the file's final state diverges from what the agent wrote. A full
+ * write diverges by inequality; a fragment write diverges when any snippet the
+ * agent authored is no longer present, meaning the user removed or rewrote it.
+ */
+function diverged(write: FileWrite, finalState: string): boolean {
+  if (write.kind === "full") return finalState !== (write.outputs[0] ?? "");
+  return write.outputs.some((o) => o !== "" && !finalState.includes(o));
+}
+
+/** The agent's output as one string for the evidence record. */
+function joinOutputs(write: FileWrite): string {
+  return write.kind === "full"
+    ? (write.outputs[0] ?? "")
+    : write.outputs.join("\n---\n");
 }
 
 function renderTurn(e: TranscriptEntry): string {
@@ -203,84 +262,84 @@ function renderTurn(e: TranscriptEntry): string {
 }
 
 /**
- * Draft evidence from a transcript. Processes only entries at or after `since`
- * (the per-session cursor), so a re-fired observation never re-drafts a turn.
- * Human turns become instruction/correction evidence with a verbatim window of
- * surrounding turns; a file whose disk state diverges from the last thing the
- * agent wrote to it becomes a silent-edit draft.
+ * Draft evidence from a transcript. Human turns become instruction/correction
+ * evidence with a verbatim window of surrounding turns; a file whose disk state
+ * diverges from the last thing the agent wrote to it becomes a silent-edit
+ * draft. Ids are content-derived, so re-processing the whole transcript re-emits
+ * the same id for an unchanged observation: the caller dedups by id, which makes
+ * re-processing idempotent without a cursor (least power, and robust to a
+ * compacted or rotated transcript whose indices shift).
  */
 export function assembleEvidence(
   raw: string,
   meta: { session: string; repository?: string },
   options: AssembleOptions = {},
-): AssembleResult {
+): readonly EvidenceRecord[] {
   const entries = parseTranscript(raw);
   const window = options.window ?? 6;
   const readFinalState = options.readFinalState ?? defaultReader;
-  // A cursor past the end means the transcript was rotated or truncated: start
-  // over rather than skip everything.
-  const since = options.since !== undefined && options.since <= entries.length
-    ? options.since
-    : 0;
   const evidence: EvidenceRecord[] = [];
 
-  for (let i = since; i < entries.length; i++) {
+  for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!;
     if (!e.humanTyped) continue;
-    const start = Math.max(0, i - window);
-    const turns = entries
-      .slice(start, i + 1)
-      .filter((t) => t.text !== "")
-      .map(renderTurn)
-      .join("\n---\n");
+    const turns = windowAt(entries, i, window);
     const signalKind: SignalKind = CORRECTION_CUES.test(e.text)
       ? "correction"
       : "instruction";
+    const repository = repoOf(e, meta.repository);
     evidence.push({
-      id: `${meta.session}:turn:${i}`,
+      // Content-derived id: a re-processed transcript re-yields the same id for
+      // an unchanged turn (deduped) and a fresh one for a genuinely new turn.
+      id: `${meta.session}:turn:${hash(turns)}`,
       at: e.at ?? "",
       signalKind,
       turns,
       session: meta.session,
-      ...(repoOf(e, meta.repository) !== undefined
-        ? { repository: repoOf(e, meta.repository)! }
-        : {}),
+      ...(repository !== undefined ? { repository } : {}),
     });
   }
 
   // Silent edits: the LAST thing the agent wrote to each path is its final
-  // output; compare that to the file's disk state. Only paths written at or
-  // after the cursor are considered, so a prior session's writes are not
-  // re-diffed. A missing or unchanged file yields no signal.
+  // output; compare that to the file's disk state (R1.1). A missing file, or one
+  // that still matches, yields no signal.
   const lastWrite = new Map<string, { write: FileWrite; index: number }>();
-  for (let i = since; i < entries.length; i++) {
+  for (let i = 0; i < entries.length; i++) {
     for (const w of entries[i]!.writes) lastWrite.set(w.path, { write: w, index: i });
   }
   for (const [path, { write, index }] of lastWrite) {
     const finalState = readFinalState(path);
-    if (finalState === undefined || finalState === write.agentOutput) continue;
+    if (finalState === undefined || !diverged(write, finalState)) continue;
     const e = entries[index]!;
-    const start = Math.max(0, index - window);
-    const turns = entries
-      .slice(start, index + 1)
-      .filter((t) => t.text !== "")
-      .map(renderTurn)
-      .join("\n---\n");
+    const turns = windowAt(entries, index, window);
+    const agentOutput = cap(joinOutputs(write));
+    const capped = cap(finalState);
+    const repository = repoOf(e, meta.repository);
     evidence.push({
-      id: `${meta.session}:edit:${basename(path)}:${index}`,
+      // The path and content go into the id, so same-basename files never
+      // collide and an unchanged edit re-yields the same id.
+      id: `${meta.session}:edit:${hash(`${path} ${agentOutput} ${capped}`)}`,
       at: e.at ?? "",
       signalKind: "silent-edit",
       turns,
       session: meta.session,
-      agentOutput: write.agentOutput,
-      finalState,
-      ...(repoOf(e, meta.repository) !== undefined
-        ? { repository: repoOf(e, meta.repository)! }
-        : {}),
+      agentOutput,
+      finalState: capped,
+      ...(repository !== undefined ? { repository } : {}),
     });
   }
 
-  return { evidence, consumed: entries.length };
+  return evidence;
+}
+
+/** The verbatim window of surrounding turns ending at entry `i`, capped. */
+function windowAt(entries: TranscriptEntry[], i: number, window: number): string {
+  const turns = entries
+    .slice(Math.max(0, i - window), i + 1)
+    .filter((t) => t.text !== "")
+    .map(renderTurn)
+    .join("\n---\n");
+  return cap(turns);
 }
 
 /** Repository hint: the caller's, else the entry's cwd basename. No fs read. */
@@ -291,19 +350,19 @@ function repoOf(e: TranscriptEntry, fallback?: string): string | undefined {
 
 /**
  * Read a transcript file and draft evidence from it. An unreadable path yields
- * no evidence and leaves the cursor where it was (fail-open, D2), so a missing
- * transcript never wedges the observation pass.
+ * no evidence (fail-open, D2), so a missing transcript never wedges the
+ * observation pass.
  */
 export function ingestTranscriptFile(
   path: string,
   meta: { session: string; repository?: string },
   options: AssembleOptions = {},
-): AssembleResult {
+): readonly EvidenceRecord[] {
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
   } catch {
-    return { evidence: [], consumed: options.since ?? 0 };
+    return [];
   }
   return assembleEvidence(raw, meta, options);
 }

@@ -229,14 +229,30 @@ Recorded so the log matches the code, not just the intent above.
   `record` persists it without either crossing the boundary. The provenance gate is the transcript's
   own shape: a human-typed turn has string (or text-block) content and is neither a tool-result turn
   nor a subagent (sidechain) turn, so only genuine user input can ever source a blocking entry.
-- **Silent edits are the agent's last write to a path versus its disk state.** The reader diffs the
-  final `Write`/`Edit` the agent made to each file against the file's current content (R1.1); a
-  matching or unreadable file yields no signal. The final-state read is injected, so assembly is
-  offline-testable. Signal kind is a cheap cue only (a correction-word regex tags correction vs
-  instruction); the detector still judges intent from the raw turns, and evidence is recorded broadly
-  so the R1.14 hindsight pass has the raw signal. A per-session cursor (count of entries consumed)
-  plus id-dedup makes a re-fired SessionEnd idempotent; a cursor past the end (rotated transcript)
-  restarts from zero.
+- **Silent edits are the agent's last write to a path versus its disk state, compared by kind.** The
+  reader diffs the final authoring op per file against the file's current content (R1.1). A full write
+  (`Write`, whole-file `content`) diverges by inequality; a fragment write (`Edit`/`MultiEdit`/
+  `NotebookEdit`, replacement snippets) diverges only when a snippet the agent authored is no longer
+  present, meaning the user removed or rewrote it. Comparing a fragment to the whole file by equality
+  (the first cut) fired on every edited file; the kind-aware check is the fix. A matching or unreadable
+  file yields no signal, and the injected final-state read keeps assembly offline-testable. Signal kind
+  is a cheap cue only (a correction-word regex tags correction vs instruction); the detector still
+  judges intent from the raw turns, and evidence is recorded broadly so the R1.14 hindsight pass has
+  the raw signal. Stored turns and payloads are capped (20k chars, truncation marked) so one generated
+  file cannot bloat the append-only log.
+- **Idempotency is content-derived ids plus dedup, not a cursor.** Each evidence id is an FNV-1a hash
+  of its content (the turn window, or the path + agent output + final state), so re-processing the
+  whole transcript re-yields the same id for an unchanged observation (the caller drops it) and a fresh
+  id for a genuinely new one (recorded). A first cut used a per-session cursor of consumed entries;
+  removed, because positional ids collided with the dedup on the rotation/compaction reset path it
+  existed to handle, and index shifts could skip a new-but-early turn. Content ids are position-
+  independent, which is strictly more correct under a compacted or rotated transcript and also lets a
+  divergence that appears after a SessionEnd be caught on the next one. The reader keys the human-typed
+  provenance gate on the transcript's own shape (string/text content, not a tool-result, not a
+  sidechain subagent) rather than on the entry `type`, so an unversioned host-format change degrades
+  toward capture, not toward dropping a turn. An explicit provenance field on the evidence record
+  (ARCHITECTURE 6.2 names one) is deferred: nothing reads it yet (the gate keys on the candidate's
+  signal kind), and the two produced classes map cleanly from signal kind for now.
 - **Not yet built, so not yet claimed as in-place** despite the intent above: the per-card version
   CAS and the lock around the primary commit path (only the lifecycle read-modify-write is locked
   today), `rewrite`/`updatedInput` as an outcome (the engine is deny/ask/allow), git as the

@@ -69,14 +69,3 @@ export function historyLogPath(): string {
 export function pendingDir(): string {
   return join(stateDir(), "pending");
 }
-
-/** Per-session observation cursors: how far each transcript has been consumed. */
-export function cursorsDir(): string {
-  return join(stateDir(), "cursors");
-}
-
-/** The cursor file for one session. The id is sanitised to a safe basename. */
-export function cursorPath(sessionId: string): string {
-  const safe = sessionId.replace(/[^A-Za-z0-9._-]/g, "_") || "session";
-  return join(cursorsDir(), `${safe}.json`);
-}

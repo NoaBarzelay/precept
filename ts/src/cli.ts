@@ -14,7 +14,6 @@ import { review } from "./gate/gate.ts";
 import { makeClient } from "./infer/cli_client.ts";
 import { detect } from "./infer/detect.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
-import { readCursor, writeCursor } from "./record/cursor.ts";
 import { appendEvidence, readEvidence } from "./record/evidence.ts";
 import { readHistory } from "./record/history.ts";
 import { getPending, listPending, removePending } from "./record/queue.ts";
@@ -185,8 +184,8 @@ export function dismissCmd(args: string[]): string {
 
 /**
  * Read a finished session transcript and record the evidence it yields (the
- * manual counterpart to the SessionEnd observation trigger). Advances the
- * session cursor and dedups by evidence id, so re-running it is idempotent.
+ * manual counterpart to the SessionEnd observation trigger). Dedups by
+ * content-derived evidence id, so re-running it is idempotent.
  */
 export function ingestCmd(args: string[]): string {
   const positional: string[] = [];
@@ -203,12 +202,10 @@ export function ingestCmd(args: string[]): string {
     return "usage: precept ingest <transcript.jsonl> [--session S] [--repo R]";
   }
   const sess = session ?? path;
-  const since = readCursor(sess);
-  const { evidence, consumed } = ingestTranscriptFile(
-    path,
-    { session: sess, ...(repository !== undefined ? { repository } : {}) },
-    { since },
-  );
+  const evidence = ingestTranscriptFile(path, {
+    session: sess,
+    ...(repository !== undefined ? { repository } : {}),
+  });
   const seen = new Set(readEvidence().map((e) => e.id));
   let appended = 0;
   for (const record of evidence) {
@@ -217,7 +214,6 @@ export function ingestCmd(args: string[]): string {
     seen.add(record.id);
     appended++;
   }
-  writeCursor(sess, consumed);
   return appended === 0
     ? "ingested transcript; no new evidence (nothing new, or unreadable)"
     : `ingested transcript; recorded ${appended} evidence record(s)`;

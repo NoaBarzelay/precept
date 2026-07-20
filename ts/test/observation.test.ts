@@ -5,7 +5,6 @@ import { join } from "node:path";
 import type { Candidate } from "../src/domain/candidate.ts";
 import { review } from "../src/gate/gate.ts";
 import { observeSession, runObservation } from "../src/observation.ts";
-import { readCursor } from "../src/record/cursor.ts";
 import { readEvidence } from "../src/record/evidence.ts";
 import { readHistory } from "../src/record/history.ts";
 
@@ -45,7 +44,7 @@ test("observation ignores non-PostToolUse events", () => {
 const transcript = (...lines: object[]) =>
   lines.map((l) => JSON.stringify(l)).join("\n");
 
-test("SessionEnd drafts evidence from the transcript and advances the cursor", () => {
+test("SessionEnd drafts evidence from the transcript", () => {
   const path = join(state, "session.jsonl");
   writeFileSync(
     path,
@@ -61,10 +60,9 @@ test("SessionEnd drafts evidence from the transcript and advances the cursor", (
   const ev = readEvidence();
   expect(ev).toHaveLength(1);
   expect(ev[0]!.turns).toContain("always run tests first");
-  expect(readCursor("s1")).toBe(2);
 });
 
-test("a re-fired SessionEnd is idempotent (cursor + id dedup)", () => {
+test("a re-fired SessionEnd is idempotent (content-derived id dedup)", () => {
   const path = join(state, "session.jsonl");
   writeFileSync(
     path,
@@ -74,6 +72,21 @@ test("a re-fired SessionEnd is idempotent (cursor + id dedup)", () => {
   expect(observeSession(event)).toBe(1);
   expect(observeSession(event)).toBe(0); // nothing new the second time
   expect(readEvidence()).toHaveLength(1);
+});
+
+test("a grown transcript appends only the new turn (dedup, no cursor)", () => {
+  const path = join(state, "session.jsonl");
+  const first = { type: "user", message: { role: "user", content: "first instruction" } };
+  writeFileSync(path, transcript(first));
+  const event = { kind: "SessionEnd" as const, sessionId: "s1", transcriptPath: path };
+  expect(observeSession(event)).toBe(1);
+  // The session resumed and ended again with one more human turn.
+  writeFileSync(
+    path,
+    transcript(first, { type: "user", message: { role: "user", content: "second instruction" } }),
+  );
+  expect(observeSession(event)).toBe(1); // only the new turn, old one deduped
+  expect(readEvidence()).toHaveLength(2);
 });
 
 test("SessionEnd with no transcript path records nothing and does not throw", () => {
