@@ -146,3 +146,59 @@ check is honest before it lets it block.
   `loadExtension` throws under Bun's SQLite on macOS, so a vector extension would need a custom
   SQLite build shipped alongside. A dense arm, if ever earned by a Recall@k eval, can be
   brute-force cosine over a few hundred vectors in plain TypeScript, no extension.
+
+## Source of truth: markdown cards, scrutinized (2026-07-19)
+The Storage section above asserts "markdown cards = source of truth." That was inherited, not
+scrutinized. Running the protocol now, because it is load-bearing.
+
+**The decision is not cards-vs-database. It is four orthogonal axes:** record format
+(markdown+frontmatter / structured file / DB row), storage engine (git-tracked files / embedded
+DB / git-for-data / sync engine), temporal model (mutable + external history / bi-temporal
+columns / append-only event log), and human-edit surface (edit truth / edit a render and
+round-trip / gate-only).
+
+**What the leading systems choose (as reference, not authority).** Anthropic Agent Skills and
+Claude Code memory: markdown files on the filesystem, for transparency, audit, and
+self-authoring. Zep/Graphiti: bi-temporal knowledge graph, invalidate-never-delete. ACE:
+structured itemized deltas with deterministic merge. Mem0/Letta: DB-backed vector or block
+stores. No consensus; each optimizes a different thing. The one convergence is that all separate
+a legible surface from a temporal/retrieval engine (source-of-truth vs derived projection). The
+memory benchmarks are vendor-published and contested (a filesystem+grep baseline beat the
+branded systems on LOCOMO), so this input is a tiebreaker, not a decider.
+
+**The deciding factor is project-specific: the corpus is a few hundred entries.** At that scale
+the whole catalog folds in memory, so contradiction, subsumption, and retrieval need no database
+engine, only a disposable local index. The requirements that looked like they demanded a DB
+(bi-temporal validity, contradiction, retrieval) demand *structured, loadable* data, which
+frontmatter is, not a query engine. Two further specifics settle it: the host commit targets are
+markdown regardless (Convention -> rules file, Skill -> SKILL.md), so cards-as-truth removes a
+translation layer; and git already is an append-and-invalidate log over the cards, supplying
+transaction-time history for free.
+
+**Decision: markdown cards remain the source of truth, for THIS use case.** Real risks here are
+audit-legibility and never-stranding-data (portfolio + longevity), not query throughput or
+concurrent merge. Cards + git + a typed frontmatter schema hit exactly those.
+
+**Options considered and rejected for this use case:**
+- **DB of record (SQLite/graph):** not sync-safe in the vault, not hand-editable in Obsidian, no
+  free line-diff history, and it still needs a markdown render for the host targets. Solves a
+  scale/query problem this corpus does not have.
+- **Event-sourcing engine:** the elegant fit for provenance + bi-temporal + reversibility, and
+  the design already keeps evidence and decisions as immutable append-only records. But at a few
+  hundred entries the replay/projection/event-schema-migration machinery is cost with no return;
+  git already logs, and provenance is already carried by the four separate record layers.
+- **CRDT / local-first sync engine (Automerge, Electric, libSQL replicas):** solves automatic
+  merge of concurrent multi-device edits. The only concurrency here is parallel Claude Code
+  sessions on one machine, handled by per-card version compare-and-swap plus git. A CRDT is a
+  dependency and a failure surface for a problem not present.
+
+**Three fixes this scrutiny surfaced (now in ARCHITECTURE.md storage):**
+1. Frontmatter is a validated, versioned typed contract, checked on every read and write, not
+   freeform YAML.
+2. Valid-time is explicit frontmatter (`valid_from`, `valid_until` or the condition);
+   transaction-time comes from git. Bi-temporal without an event engine.
+3. Currency is invalidate-not-delete (retire/supersede set a status, keep the card, recover from
+   git); only a removal on request hard-deletes. Zep's one portable rule, without Zep's graph.
+
+**Revisit if:** the corpus outgrows in-memory folding (low tens of thousands), or multi-device
+concurrent hand-editing becomes real. Either would reopen the sync-engine option.
