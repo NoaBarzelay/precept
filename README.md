@@ -426,45 +426,48 @@ The unset targets are unset in two distinct ways. Override rate and the north st
 
 ## Roadmap
 
-I order this by dependency and priority, not by date. The rule I am following: harden the loop that already exists before I widen it. The core learning loop is built; the next phase proves it works and measures what it costs; only then do I add more entity types, a data catalog, and autonomous learning on top of a foundation I trust.
+Ordered by dependency, not date. The rule: harden and measure the loop that exists before widening it. The core learning loop is built and runs in Python; the near-term work proves it changes behavior, measures its cost, and rebuilds the engine in TypeScript one seam at a time; only then do I add more entity types, a typed data catalog, and autonomous learning.
 
-Each phase below is defined by an outcome, not a ticket list. Confidence is highest for Now and decreases across Next and Later; Later is directional and will reorder as my real usage tells me which corrections matter most.
+Each phase is an outcome, not a ticket list. Confidence is highest for Now and falls across Next and Later; Later will reorder as real usage shows me which corrections matter most.
 
-### Now (Built)
+### Now (built)
 
-Outcome: the core loop runs end to end, and its one measurable guarantee is enforced in CI.
+A working reference implementation runs the loop end to end and proves the core thesis. The TypeScript rebuild strangles it seam by seam behind the shared catalog ([ARCHITECTURE.md](ARCHITECTURE.md)); these capabilities carry over, their mechanisms are being redesigned.
 
-- The full loop is working: detect a candidate correction from a session, review it, keep it, then either enforce it deterministically or steer the agent with it.
+- The full loop works: detect a candidate correction in a session, review it, keep it, then enforce it deterministically or steer the agent with it.
 - 3 of the 9 planned entity types are implemented: Rule, Knowledge note, and Convention. The other 6 are not built.
-- The deterministic enforcement eval is wired and CI-gated, so a kept correction that should be enforced cannot silently regress.
-- A full offline, hermetic test suite, plus ReDoS and recursion guards on the matcher path.
+- The deterministic enforcement eval is wired and CI-gated, so a kept correction that should enforce cannot silently regress.
+- The human review gate: nothing enters the catalog or enforces without my keep.
+- A full offline, hermetic test suite.
 
-This is the smallest version of Objective O1 (direction improving across sessions) that actually holds together. It is real, but it is narrow: it improves behavior only for the correction types the three built entity types cover, and the only property proven automatically today is that enforcement fires.
+This is the smallest version of Objective O1 that holds together: real, but narrow. It covers only the correction types the three built entity types reach, enforces on keep without the probation the spec now calls for, and validates checks against hand-written cases rather than recorded history. Those gaps are the redesign, not regressions.
 
-### Next (In Progress)
+### Next (harden, measure, rebuild)
 
-Outcome: I can measure that the loop actually changes behavior, and know what the learning flows cost.
+I can measure that the loop changes behavior, know what it costs, and stand it on a distributable engine. Nothing here widens scope.
 
-Everything in Next hardens the loop that already exists. Nothing here widens scope; that is deliberate.
+- Paired before-and-after enforcement eval, live. The direct measure of O1: run a session with and without a kept correction and show the behavior changed. Today enforcement is proven to fire; this proves it helps.
+- Token and latency cost report for the learning-loop flows, so a system that runs every session shows its own overhead before more flows land on top.
+- Check-fidelity eval: prove the check drawn from a correction captures the intent, not just that the engine runs a hand-written check correctly.
+- Contract-drift detection: live-fire a known-blocked action through the real host at startup and on version change, and record an unparseable host event as a health signal instead of a silent allow.
+- In-the-wild false-block capture: log every hard block and let me flag a wrong one, so precision becomes a collected signal, not an assertion.
+- The TypeScript rebuild, as a strangler over the shared catalog, knowledge-first. Delivery and sequencing are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-- Paired before-and-after enforcement eval, live. This is the direct measurement of O1: run the same session with and without a kept correction and show the behavior changed. Today enforcement is proven to fire; this proves it helps.
-- Token cost report for the learning-loop flows. A system that runs on every session has to justify its own overhead. I want the cost of detection, review, and compilation visible before I add more flows on top.
+### Later (widen)
 
-The before-and-after eval turns the loop's core unproven assumption (that enforcement improves behavior, not just fires) into a measured property. Widening to more entity types or adding autonomous learning before that check exists would scale an unverified mechanism. I would rather scale a measured one.
+The system compounds knowledge as well as direction (Objective O2), retrieves it precisely at scale, proposes its own improvements under the same review gate, and covers the correction types I actually hit.
 
-### Later (Planned, Not Built)
+- Typed data catalog: the projects, domains, and people my work operates on, as first-class typed entities. This is the backbone for O2 and does not exist yet.
+- Catalog schema versioning and migration: a version on every entity card and version-keyed forward-migrations, so a format change upgrades accumulated entities instead of stranding them. This is N12, the one NFR with nothing built behind it.
+- The remaining 6 entity types: Skill, Agent persona, Output style, Slash command, MCP config, and Permission profile, added in the order the correction types show up most in real usage.
+- Agentic flows: govern the workflow, not just the action. Today a rule blocks one call and a convention steers one file; above that is the repeatable multi-step loop I run with agents (research fan-out, adversarial verify, synthesize). Precept would learn a flow I repeat, scaffold the agent through it, and check its structure at the Stop gate.
+- Just-in-time retrieval: move global conventions from always-loaded to activity-keyed retrieval, closing the open conformance gap against Anthropic's finite-context guidance.
+- Semantic recall: add an embedding index only if a Recall@k eval on my own corpus shows keyword retrieval missing relevant entities. Deferred behind a number, not skipped.
+- Background learning: the system drafts improvement proposals from external best practices on its own, gated by the same human review that governs corrections today. Deferred until that gate is proven.
+- Portability to other hosts: keep the catalog and the hard/soft model host-agnostic, and let an adapter compile the same entries to other agent hosts as they expose deny and gate surfaces.
+- Claude Code plugin packaging, so install becomes one command instead of settings edits.
 
-Outcome: the system compounds knowledge as well as direction (Objective O2), proposes its own improvements under the same review gate, and covers the correction types I actually hit.
-
-These are directional. I am naming them honestly as not built, and the order within Later will follow evidence from my real usage, not this list.
-
-- Typed data catalog. The projects, domains, and people my work operates on, as first-class typed entities. This is the backbone for O2 (knowledge that compounds and is retrieved when it applies) and it does not exist yet.
-- Catalog schema versioning and migration. A schema version stamped on every entity card, plus version-keyed forward-migrations, so a change to the card format upgrades accumulated entities instead of stranding them. This is N12, the one non-functional requirement with nothing built behind it: reversibility today covers a clean uninstall (N8), not forward-migration of accumulated data.
-- Background learning. The system drafts improvement proposals from external best practices on its own, gated by the exact same human review that governs corrections today. Autonomy is deferred on purpose: I only want the system proposing changes once the review gate it depends on is proven.
-- The remaining entity types. The other 6 of 9, added in the order the correction types show up most in my real usage, so I build coverage where it pays off rather than for completeness.
-- Agentic flows. Govern the workflow, not just the action. Today a rule blocks one call and a convention steers one file; the order above that is the repeatable multi-step loop I run with agents (for example, research fan-out, then adversarial verify, then synthesize). Precept would learn a flow I repeat, scaffold the agent through it, and enforce its structure at the Stop gate, extending today's single-call and trajectory checks from one action to a whole sequence.
-
-The through-line: Now is a working loop, Next makes it measured and affordable, Later makes it broad and partly self-driving. I widen scope only after the foundation under it is one I have verified, not one I am hoping holds.
+I widen scope only after the foundation under it is one I have verified.
 
 ## Related Documents
 
