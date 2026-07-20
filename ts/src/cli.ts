@@ -5,6 +5,7 @@
 import type { Candidate } from "./domain/candidate.ts";
 import type { Scope } from "./domain/entry.ts";
 import { review } from "./gate/gate.ts";
+import { compile, writeProjection } from "./projection/projection.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
 import { allEntries, removeCard } from "./store/card.ts";
@@ -96,6 +97,13 @@ export function reindexCmd(): string {
   return `reindexed ${allEntries().length} entries`;
 }
 
+/** Recompile the catalog's hard rules into the projection the hot path reads. */
+export function compileCmd(): string {
+  const rules = compile(allEntries());
+  writeProjection(rules);
+  return `compiled ${rules.length} enforced rules`;
+}
+
 export function runCli(argv: string[]): string {
   const [cmd, ...rest] = argv;
   switch (cmd) {
@@ -109,8 +117,10 @@ export function runCli(argv: string[]): string {
       return removeCmd(rest[0] ?? "");
     case "reindex":
       return reindexCmd();
+    case "compile":
+      return compileCmd();
     default:
-      return "commands: note, recall, list, remove, reindex";
+      return "commands: note, recall, list, remove, reindex, compile";
   }
 }
 

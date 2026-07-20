@@ -40,6 +40,11 @@ export function indexDbPath(): string {
   return join(stateDir(), "index.db");
 }
 
+/** The compiled check cache the interception hot path reads (JSON, rebuildable). */
+export function projectionPath(): string {
+  return join(stateDir(), "policies.json");
+}
+
 /** The append-only evidence log (operational state). */
 export function evidenceLogPath(): string {
   return join(stateDir(), "evidence.jsonl");
@@ -48,4 +53,9 @@ export function evidenceLogPath(): string {
 /** The append-only decision-record log (operational state, N6). */
 export function decisionsLogPath(): string {
   return join(stateDir(), "decisions.jsonl");
+}
+
+/** The append-only fault log: what failed open, so a break is not silent (N1). */
+export function faultsLogPath(): string {
+  return join(stateDir(), "faults.jsonl");
 }

@@ -15,12 +15,14 @@ const ALLOWED: Record<string, string[]> = {
   host: ["domain", "store"],
   record: ["domain", "store"],
   retrieve: ["domain", "store"],
+  projection: ["domain", "store"],
   infer: ["domain", "store", "retrieve", "record"],
   gate: ["domain", "store", "retrieve", "record"],
   eval: ["domain", "store", "retrieve", "record"],
   // Orchestration entrypoints.
-  cli: ["domain", "store", "retrieve", "record", "gate", "infer", "host"],
+  cli: ["domain", "store", "retrieve", "record", "gate", "infer", "host", "projection"],
   injection: ["domain", "store", "retrieve", "host"],
+  interception: ["domain", "host", "record", "projection"],
 };
 
 const MODULES = new Set(Object.keys(ALLOWED));
