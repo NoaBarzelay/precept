@@ -202,3 +202,26 @@ concurrent merge. Cards + git + a typed frontmatter schema hit exactly those.
 
 **Revisit if:** the corpus outgrows in-memory folding (low tens of thousands), or multi-device
 concurrent hand-editing becomes real. Either would reopen the sync-engine option.
+
+## Build decisions from the TypeScript rebuild (2026-07-20)
+Recorded so the log matches the code, not just the intent above.
+
+- **Lexical regex is a hand-rolled Thompson NFA, not re2.** The Matchers section above names re2
+  for the `regex` op. re2 has no first-party Bun binding and would add a native dependency to the
+  hot path, which the distribution decision works to avoid. A small linear-time NFA (single-pass
+  simulation, no backtracking) delivers the same guarantee (a model-authored pattern cannot cause
+  a ReDoS) with zero dependencies. The structural/AST tier (tree-sitter) is still deferred to the
+  turn-end path and unbuilt. Cost: a hand-rolled engine is more code to be wrong; it carries a
+  scaling test that asserts linear time, and it is the one place the build reverses a logged
+  direction, recorded here rather than left silent.
+- **Scope is compiled into the check, not enforced separately.** A rule's scope (repository or
+  path) becomes an implicit conjunct on its compiled check, so the enforcement engine stays a
+  single evaluator over one boolean and a repo-scoped rule simply does not match outside its repo.
+  Language and situation scopes have no fact to check against, so they enforce as authored.
+- **Enforcement faults are returned, not logged in place.** `enforce` is pure (no IO); it returns
+  the rules whose check threw, and the interception entrypoint records them, so fail-open stays
+  recorded (N1) without giving the pure evaluator a dependency on the fault log.
+- **Not yet built, so not yet claimed as in-place** despite the intent above: the per-card version
+  CAS and the lock around the primary commit path (only the lifecycle read-modify-write is locked
+  today), `rewrite`/`updatedInput` as an outcome (the engine is deny/ask/allow), git as the
+  transaction-time store (asserted, not read by code), and the whole currency/governance surface.
