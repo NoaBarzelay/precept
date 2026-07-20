@@ -1,7 +1,7 @@
 {
   "session_id": "abc123",
-  "transcript_path": "/Users/x/.claude/projects/acme/transcript.jsonl",
-  "cwd": "/Users/x/code/acme-api",
+  "transcript_path": "/work/.claude/projects/acme/transcript.jsonl",
+  "cwd": "/work/acme-api",
   "hook_event_name": "UserPromptSubmit",
   "prompt": "the staging deploy is failing, can you look at the config"
 }
