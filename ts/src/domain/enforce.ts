@@ -21,36 +21,56 @@ export interface CompiledRule {
   readonly reason: string;
 }
 
+/** A rule whose check threw during evaluation: it failed open and must be recorded (N1). */
+export interface EnforceFault {
+  readonly ruleId: string;
+  readonly error: string;
+}
+
 export interface Decision {
   readonly outcome: Outcome;
   /** The rule that produced a non-allow outcome. */
   readonly ruleId?: string;
   readonly reason?: string;
+  /** Rules that failed open, so the caller can record them (N1/D2). */
+  readonly faults: readonly EnforceFault[];
 }
 
 const RANK: Record<Outcome, number> = { allow: 0, ask: 1, deny: 2 };
 
 /**
  * Evaluate the applicable rules against the facts and return the strongest
- * outcome. A rule whose check throws is skipped (fail toward allow), so one
- * malformed rule cannot wedge the call.
+ * outcome. A rule whose check throws is skipped (fail toward allow) but its
+ * fault is returned, because fail-open is only defensible if the break is
+ * recorded rather than silent (D2).
  */
 export function enforce(
   facts: FactRecord,
   rules: readonly CompiledRule[],
 ): Decision {
-  let best: Decision = { outcome: "allow" };
+  let outcome: Outcome = "allow";
+  let ruleId: string | undefined;
+  let reason: string | undefined;
+  const faults: EnforceFault[] = [];
   for (const rule of rules) {
     let matched = false;
     try {
       matched = evaluate(rule.check, facts);
-    } catch {
-      matched = false; // a broken rule never blocks
+    } catch (e) {
+      faults.push({ ruleId: rule.id, error: e instanceof Error ? e.message : String(e) });
+      continue; // a broken rule never blocks, but it is recorded
     }
     if (!matched) continue;
-    if (RANK[rule.outcome] > RANK[best.outcome]) {
-      best = { outcome: rule.outcome, ruleId: rule.id, reason: rule.reason };
+    if (RANK[rule.outcome] > RANK[outcome]) {
+      outcome = rule.outcome;
+      ruleId = rule.id;
+      reason = rule.reason;
     }
   }
-  return best;
+  return {
+    outcome,
+    ...(ruleId !== undefined ? { ruleId } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+    faults,
+  };
 }

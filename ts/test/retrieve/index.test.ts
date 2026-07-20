@@ -131,6 +131,16 @@ test("the default retrieve path meets the stated N9 caps (5 / 2000)", () => {
   expect(total).toBeLessThanOrEqual(INJECTION_BOUNDS.maxChars + long.length + 40);
 });
 
+test("budget truncates a single oversized section to the hard cap (N9)", () => {
+  const huge = "render deploy detail ".repeat(500); // ~10k chars, one section
+  writeCard(entry({ id: "big", content: huge }));
+  new Index().rebuild();
+  const hits = retrieve("render deploy", { maxChars: 200 });
+  expect(hits.length).toBe(1);
+  expect(hits[0]!.text.length).toBeLessThanOrEqual(200);
+  expect(hits[0]!.text.endsWith("...")).toBe(true);
+});
+
 test("empty or symbol-only query returns nothing, no FTS syntax error", () => {
   writeCard(entry({ id: "x", content: "content here" }));
   const idx = new Index();

@@ -54,3 +54,18 @@ test("a malformed rule fails toward allow, never throws", () => {
   expect(enforce(bash("pip install x"), [broken, denyPip]).outcome).toBe("deny");
   expect(enforce(bash("ls"), [broken]).outcome).toBe("allow");
 });
+
+test("a rule whose check throws fails open but is recorded as a fault (N1)", () => {
+  // A malformed regex reaching the projection throws at evaluation time.
+  const badRegex: CompiledRule = {
+    id: "bad-regex",
+    outcome: "deny",
+    reason: "x",
+    check: { op: "str.regex", field: { kind: "input", key: "command" }, pattern: "a(b" },
+  };
+  const d = enforce(bash("pip install x"), [badRegex, denyPip]);
+  expect(d.outcome).toBe("deny"); // denyPip still fires
+  expect(d.faults.map((f) => f.ruleId)).toContain("bad-regex");
+  // Alone, it fails open rather than blocking.
+  expect(enforce(bash("ls"), [badRegex]).outcome).toBe("allow");
+});

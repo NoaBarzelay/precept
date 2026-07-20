@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Candidate } from "./../src/domain/candidate.ts";
@@ -12,12 +12,16 @@ import { readLines } from "../src/record/log.ts";
 
 let home: string;
 let state: string;
+let repo: string; // a working dir inside a repo named acme-api
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "precept-cards-"));
   state = mkdtempSync(join(tmpdir(), "precept-state-"));
   process.env.PRECEPT_HOME = home;
   process.env.PRECEPT_STATE_DIR = state;
+  repo = join(home, "acme-api");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
 });
 
 afterEach(() => {
@@ -52,12 +56,12 @@ function commitOperationalRule(): void {
   writeCard({ ...entry!, lifecycle: "operational" as const });
 }
 
-const preToolUse = (command: string) =>
+const preToolUse = (command: string, cwd = repo) =>
   JSON.stringify({
     hook_event_name: "PreToolUse",
     tool_name: "Bash",
     tool_input: { command },
-    cwd: home,
+    cwd,
   });
 
 test("compile turns a live hard rule into a projection entry", () => {
@@ -96,6 +100,23 @@ test("interception denies a matching call and allows others", () => {
   expect(allowed.continue).toBe(true);
 });
 
+test("a repo-scoped rule does not fire outside its repo (README Risk 2)", () => {
+  commitOperationalRule(); // scoped to repository acme-api
+  writeProjection(compile(allEntries()));
+
+  // In acme-api: denied.
+  expect(
+    (JSON.parse(runInterception(preToolUse("pip install httpx", repo))) as {
+      hookSpecificOutput?: { permissionDecision?: string };
+    }).hookSpecificOutput?.permissionDecision,
+  ).toBe("deny");
+
+  // In a scratch dir that is not the acme-api repo: allowed.
+  const scratch = join(home, "scratch");
+  const out = JSON.parse(runInterception(preToolUse("pip install httpx", scratch))) as Record<string, unknown>;
+  expect(out.continue).toBe(true);
+});
+
 test("non-PreToolUse events pass through", () => {
   const out = JSON.parse(runInterception(JSON.stringify({ hook_event_name: "SessionStart" }))) as Record<string, unknown>;
   expect(out.continue).toBe(true);
@@ -108,6 +129,17 @@ test("fails open and records the fault on malformed input (N1)", () => {
   expect(out.continue).toBe(true);
   const faults = readLines<{ stage: string }>(faultsLogPath());
   expect(faults.some((f) => f.stage === "interception")).toBe(true);
+});
+
+test("a rule that throws at enforcement fails open and records a fault (N1)", () => {
+  // Hand-corrupt the projection with a malformed regex the compiler would reject.
+  writeProjection([
+    { id: "bad-regex", outcome: "deny", reason: "x", check: { op: "str.regex", field: { kind: "input", key: "command" }, pattern: "a(b" } },
+  ] as never);
+  const out = JSON.parse(runInterception(preToolUse("pip install x"))) as Record<string, unknown>;
+  expect(out.continue).toBe(true); // failed open
+  const faults = readLines<{ stage: string; ruleId?: string }>(faultsLogPath());
+  expect(faults.some((f) => f.stage === "enforce" && f.ruleId === "bad-regex")).toBe(true);
 });
 
 test("an empty catalog compiles to an empty projection, everything allowed", () => {

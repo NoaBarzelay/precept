@@ -14,14 +14,21 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Check } from "../domain/check.ts";
 import type { CompiledRule } from "../domain/enforce.ts";
-import { canDeny, type Entry, isLive } from "../domain/entry.ts";
+import { canDeny, type Entry, isLive, type Scope } from "../domain/entry.ts";
 import { projectionPath } from "../store/paths.ts";
 
 /**
  * Compile live hard rules into the projection. An operational rule denies; a
  * probationary one asks (R1.19-R1.21). Soft entries and knowledge never enter
  * the projection, so the hot path only ever sees blocking checks.
+ *
+ * The entry's scope is compiled into an implicit conjunct on the check (R1.6),
+ * so a repository- or path-scoped rule fires only where its scope holds. A
+ * repo-scoped rule therefore does not fire in a different repo or a scratch
+ * dir, which is the README Risk 2 false-block, closed here rather than left to
+ * the model to encode.
  */
 export function compile(entries: readonly Entry[]): CompiledRule[] {
   const out: CompiledRule[] = [];
@@ -30,12 +37,34 @@ export function compile(entries: readonly Entry[]): CompiledRule[] {
     if (!isLive(e)) continue;
     out.push({
       id: e.id,
-      check: e.check,
+      check: scopedCheck(e.scope, e.check),
       outcome: canDeny(e) ? "deny" : "ask",
       reason: firstLine(e.content),
     });
   }
   return out;
+}
+
+/** Conjoin the scope predicate onto the check, where the scope is mechanically
+ * checkable from the facts (repository, path). */
+function scopedCheck(scope: Scope, check: Check): Check {
+  const conjunct = scopeConjunct(scope);
+  return conjunct === null ? check : { op: "and", checks: [conjunct, check] };
+}
+
+function scopeConjunct(scope: Scope): Check | null {
+  switch (scope.kind) {
+    case "repository":
+      return { op: "str.eq", field: { kind: "repository" }, value: scope.repository };
+    case "path":
+      return { op: "path.glob", field: { kind: "path" }, glob: scope.glob };
+    // global applies everywhere; language and situation are not mechanically
+    // checkable from a tool call's facts, so the rule enforces as authored.
+    case "global":
+    case "language":
+    case "situation":
+      return null;
+  }
 }
 
 /** Write the projection atomically to local disk. */

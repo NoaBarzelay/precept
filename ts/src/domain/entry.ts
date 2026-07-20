@@ -125,8 +125,14 @@ const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
  * placement rules (a `host` concern) or history (a `gate` concern).
  */
 export function entryError(entry: Entry): string | null {
-  if (entry.schemaVersion !== SCHEMA_VERSION) {
-    return `schemaVersion ${entry.schemaVersion} != ${SCHEMA_VERSION}`;
+  // Refuse a card written by a newer major version (it may use fields this
+  // build would silently drop, N12). An older version is a migration concern,
+  // not a hard error; with only version 1 in existence both reduce to "== 1".
+  if (entry.schemaVersion > SCHEMA_VERSION) {
+    return `card schemaVersion ${entry.schemaVersion} is newer than ${SCHEMA_VERSION}; upgrade Precept`;
+  }
+  if (entry.schemaVersion < 1) {
+    return `invalid schemaVersion ${entry.schemaVersion}`;
   }
   if (!Number.isInteger(entry.version) || entry.version < 1) {
     return `version must be a positive integer, got ${entry.version}`;

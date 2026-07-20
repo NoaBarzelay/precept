@@ -32,15 +32,23 @@ export function retrieve(query: string, opts: RetrieveOptions = {}): Hit[] {
   }
 }
 
-/** Apply the total-size cap over already count- and floor-bounded hits. */
+/** Apply the total-size cap over already count- and floor-bounded hits. The cap
+ * is hard: the last hit is truncated to fit rather than allowed to overshoot,
+ * so one large section cannot blow the bound (N9). */
 export function budget(hits: Hit[], opts: RetrieveOptions = {}): Hit[] {
   const maxChars = opts.maxChars ?? INJECTION_BOUNDS.maxChars;
   const out: Hit[] = [];
   let used = 0;
   for (const h of hits) {
-    used += h.text.length;
-    if (used > maxChars && out.length > 0) break;
-    out.push(h);
+    if (used >= maxChars) break;
+    const remaining = maxChars - used;
+    if (h.text.length <= remaining) {
+      out.push(h);
+      used += h.text.length;
+    } else {
+      out.push({ ...h, text: `${h.text.slice(0, Math.max(0, remaining - 3))}...` });
+      break;
+    }
   }
   return out;
 }

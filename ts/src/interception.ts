@@ -23,6 +23,9 @@ export function runInterception(raw: string): string {
     const facts = assembleFacts(event);
     const rules = readProjection();
     const decision = enforce(facts, rules);
+    for (const fault of decision.faults) {
+      noteFault("enforce", fault.error, fault.ruleId);
+    }
     if (decision.outcome === "allow") return emptyOutput();
     return permissionOutput(
       decision.outcome,

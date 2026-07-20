@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Candidate } from "../src/domain/candidate.ts";
@@ -10,12 +10,16 @@ import { readCard } from "../src/store/card.ts";
 
 let home: string;
 let state: string;
+let repo: string;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "precept-cards-"));
   state = mkdtempSync(join(tmpdir(), "precept-state-"));
   process.env.PRECEPT_HOME = home;
   process.env.PRECEPT_STATE_DIR = state;
+  repo = join(home, "acme-api");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  writeFileSync(join(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
 });
 
 afterEach(() => {
@@ -46,7 +50,7 @@ function authorProbationaryRule(): string {
 }
 
 const pre = (command: string) =>
-  JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command } });
+  JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, cwd: repo });
 
 function decision(command: string): string {
   const out = JSON.parse(runInterception(pre(command))) as {
