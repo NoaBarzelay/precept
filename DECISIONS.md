@@ -82,3 +82,67 @@ Sources: [RE2](https://github.com/google/re2); [Cloudflare 2019 ReDoS outage](ht
 ## Host-drift
 - All Claude Code integration behind `adapters/claude_code.py` with CI JSONL fixtures;
   hooks **fail open** on an unrecognized input shape.
+
+## Check-language validation: evidence, not proof (2026-07-19)
+Refines the Matchers section above. The runtime **cascade** (predicate, regex, structural,
+verdict) is unchanged; this is about **authoring-time** validation: how the system decides a
+check is honest before it lets it block.
+- **Decision: validate a check against recorded tool-call history, not by symbolic proof.**
+  Reachability = does it match a concrete call (from history or a reviewed example);
+  contradiction = did two checks disagree on a recorded call; subsumption = did one check's
+  matches cover another's; breadth = how many recorded calls it would have fired on.
+- **Why not proof.** Reachability/contradiction/subsumption over strings, globs, and integer
+  constraints is an automata/SMT problem. In the TypeScript target that is a multi-megabyte
+  solver (too heavy for any hook budget) or a hand-rolled automata engine (a multi-week
+  subproject). It also answers only three of the four questions; **breadth has no symbolic
+  form**, and breadth is what the review gate needs.
+- **Cost (stated honestly).** Evidence validation is unsound: a contradiction or redundancy
+  between two checks that never co-occurred in history is missed. Reachability is NOT in this
+  gap (a check with no historical match is validated by a reviewed example instead).
+- **Why it is safe anyway.** The runtime rules absorb the miss: a false or conflicting check
+  fails toward not enforcing; a colliding rewrite applies nothing; the sampled hindsight audit
+  is the backstop. Authoring-time validation is an advisory pass over the past, not a guarantee
+  about the future.
+- **Second-order win (the real reason).** The review gate shows a rule's recorded firing
+  history instead of a rationale ("would have fired on 14 calls, here are three, should it have
+  blocked these?"). That is cognitive forcing on real cases, and it lets a probationary rule
+  graduate retroactively from history without ever interrupting a live session.
+- **Rewrite/`updatedInput` kept**, order independence preserved at RUNTIME: a field targeted by
+  two rewrites applies none and records. Authoring-time field-collision flagging over history is
+  advisory on top. (Supersedes the earlier "drop rewrite to keep order independence" direction.)
+
+## Delivery: TypeScript rebuild as a strangler, knowledge-first (2026-07-19)
+- **Decision: replace one seam at a time behind the shared markdown catalog; never a flag day.**
+  The cards are the language-agnostic source of truth, so the Python build and the TypeScript
+  build operate on the same catalog and a working system exists at every step.
+- **Coordination between the two runtimes** is by per-card version compare-and-swap (the same
+  path Storage uses for any second writer), NOT a cross-runtime lock. **Operational state**
+  (queue, counters, ledgers) is single-owner per seam, handed over when that seam migrates, so
+  the newer-major refusal rule cannot strand the trailing runtime.
+- **Order by value per session, not the dependency graph:** (1) knowledge (O2) first, since a
+  saved fact pays off in the very next session and needs no enforcement machinery; (2) the hot
+  path, the smallest self-contained piece and where Bun startup earns the move; (3) preference
+  enforcement authoring (O1) last, since it depends on accumulated corrections and on the hot
+  path to run against.
+- This **inverts the ROADMAP's enforcement-first framing** on purpose: enforcement leads there
+  because it already exists in Python; from a cold start it is the last half to deliver value.
+
+## Hook distribution: bundle, do not compile (2026-07-19)
+- **Decision: bundle the hot hook entrypoints to one dependency-free script; compile only the
+  CLI.** Measured on the target machine: a `bun build --compile` binary cold-starts ~1.7x
+  SLOWER than running the script (42 ms vs 26 ms), so compiling costs the exact budget it was
+  meant to protect. Bundling keeps the 26 ms startup and erases the `node_modules` tree, which
+  is the drift class this project has already hit; hooks run with the session cwd, so relative
+  resolution is hostile.
+- Pin the hooks to an absolute interpreter path (fixes PATH variance) and have the startup
+  diagnostic verify it still exists (an in-place runtime upgrade or a machine move can break it).
+- **No schema library on the hot path**: importing one costs more than the whole runtime
+  startup; the hook hand-narrows the host's own JSON. Model output still gets full validation in
+  the inference module, where a network call dominates.
+- **Spawn per call**, with a warm loopback daemon (a hook fronting it) as a costed escape hatch
+  if the D1 latency budget fails a test. Not adopted preemptively: spawn has no lifecycle,
+  staleness, or version-skew problem.
+- **Retrieval stays full-text (FTS), no embeddings today.** Measured 0.8 ms over 500 docs, and
+  `loadExtension` throws under Bun's SQLite on macOS, so a vector extension would need a custom
+  SQLite build shipped alongside. A dense arm, if ever earned by a Recall@k eval, can be
+  brute-force cosine over a few hundred vectors in plain TypeScript, no extension.

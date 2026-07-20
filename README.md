@@ -470,7 +470,7 @@ The through-line: Now is a working loop, Next makes it measured and affordable, 
 
 This README is the product spec and the entry point, kept deliberately high level. The documents below are the deeper design and decision records. Each is the single source of truth for its topic, so this spec points to it rather than restating it.
 
-- [ARCHITECTURE.md](ARCHITECTURE.md): the module map and the data flow between parts. Go here first to see how Precept fits together and to place any component this spec mentions.
+- [ARCHITECTURE.md](ARCHITECTURE.md): the design plan for the build. Go here for the module boundaries and their dependency rule, the four runtime paths, the check language, the concurrency and storage model, the executable fitness functions, and the delivery sequencing. It names the mechanism each requirement in this spec gets.
 - [docs/ARTIFACTS.md](docs/ARTIFACTS.md): the per-entity specification and status tracker for the nine entity types. Go here for what each entity is, its schema, and whether it is built, in progress, or planned.
 - [DECISIONS.md](DECISIONS.md): the load-bearing engineering decisions and their reasons. Go here to understand why the system is built the way it is before proposing a change.
 - [docs/ANTHROPIC-CONFORMANCE.md](docs/ANTHROPIC-CONFORMANCE.md): a self-audit against Anthropic's published agent-rules and memory guidance, including the one open retrieval gap.
