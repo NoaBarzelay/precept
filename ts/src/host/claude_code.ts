@@ -17,12 +17,20 @@ export interface UserPromptSubmitEvent {
   readonly sessionId?: string;
 }
 
-export interface PreToolUseEvent {
-  readonly kind: "PreToolUse";
+/** The fields shared by the tool-call events, enough to assemble facts. */
+export interface ToolCall {
   readonly toolName: string;
   readonly toolInput: Readonly<Record<string, unknown>>;
   readonly cwd?: string;
   readonly permissionMode?: string;
+}
+
+export interface PreToolUseEvent extends ToolCall {
+  readonly kind: "PreToolUse";
+}
+
+export interface PostToolUseEvent extends ToolCall {
+  readonly kind: "PostToolUse";
 }
 
 export interface SessionStartEvent {
@@ -40,6 +48,7 @@ export type HookEvent =
   | UserPromptSubmitEvent
   | SessionStartEvent
   | PreToolUseEvent
+  | PostToolUseEvent
   | OtherEvent;
 
 function str(v: unknown): string | undefined {
@@ -71,13 +80,13 @@ export function parseEvent(raw: string): HookEvent {
       ...(sessionId !== undefined ? { sessionId } : {}),
     };
   }
-  if (name === "PreToolUse") {
+  if (name === "PreToolUse" || name === "PostToolUse") {
     const toolInput =
       typeof o.tool_input === "object" && o.tool_input !== null
         ? (o.tool_input as Record<string, unknown>)
         : {};
     return {
-      kind: "PreToolUse",
+      kind: name,
       toolName: str(o.tool_name) ?? "",
       toolInput,
       ...(cwd !== undefined ? { cwd } : {}),
@@ -104,7 +113,7 @@ const PATH_KEYS = ["file_path", "path", "notebook_path"];
  * The one filesystem read the interception path makes is resolving the
  * repository and branch from cwd; everything else comes from the event.
  */
-export function assembleFacts(event: PreToolUseEvent): FactRecord {
+export function assembleFacts(event: ToolCall): FactRecord {
   const toolInput: Record<string, FactValue> = {};
   for (const [k, v] of Object.entries(event.toolInput)) {
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {

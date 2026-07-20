@@ -10,6 +10,7 @@ import type {
   Scope,
   SignalKind,
 } from "./entry.ts";
+import type { FactRecord } from "./facts.ts";
 
 export interface Candidate {
   readonly kind: EntryKind;
@@ -23,4 +24,10 @@ export interface Candidate {
   /** For a rule the model proposes to enforce. */
   readonly tier?: EnforcementTier;
   readonly check?: Check;
+  /**
+   * The concrete call that prompted the correction. It serves as the
+   * reachability witness for a hard rule when recorded history has no match yet
+   * (D3, N5): the triggering call demonstrates the check can fire.
+   */
+  readonly example?: FactRecord;
 }

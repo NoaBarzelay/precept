@@ -8,8 +8,10 @@ import {
   narrowOnReject,
   type Scope,
 } from "./domain/entry.ts";
+import { firing } from "./domain/validate.ts";
 import { review } from "./gate/gate.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
+import { readHistory } from "./record/history.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
 import { allEntries, readCard, removeCard, writeCard } from "./store/card.ts";
@@ -141,6 +143,25 @@ export function confirmCmd(id: string): string {
   }
 }
 
+/** Show how often a rule would have fired over recorded history (the review
+ * surface: judge a rule by real cases, not a rationale). */
+export function firingCmd(id: string): string {
+  if (id === undefined || id === "") return "usage: precept firing <id>";
+  let card;
+  try {
+    card = readCard(id);
+  } catch {
+    return `no such entry: ${id}`;
+  }
+  if (card.check === undefined) return `${id} is not an enforcing rule`;
+  const f = firing(card.check, readHistory().map((h) => h.facts));
+  if (f.count === 0) return `${id} would not have fired on any recorded call`;
+  const examples = f.examples
+    .map((e) => `  - ${JSON.stringify(e.toolInput)}`)
+    .join("\n");
+  return `${id} would have fired on ${f.count} recorded call(s):\n${examples}`;
+}
+
 /** Reject a probationary rule: narrow its condition and reset (R1.20). */
 export function rejectCmd(args: string[]): string {
   const [id, ...rest] = args;
@@ -184,8 +205,10 @@ export function runCli(argv: string[]): string {
       return confirmCmd(rest[0] ?? "");
     case "reject":
       return rejectCmd(rest);
+    case "firing":
+      return firingCmd(rest[0] ?? "");
     default:
-      return "commands: note, recall, list, remove, reindex, compile, confirm, reject";
+      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing";
   }
 }
 

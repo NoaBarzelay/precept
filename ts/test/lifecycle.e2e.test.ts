@@ -40,6 +40,7 @@ function authorProbationaryRule(): string {
         { op: "not", check: { op: "str.contains", field: { kind: "input", key: "command" }, value: "uv pip" } },
       ],
     },
+    example: { toolName: "Bash", toolInput: { command: "pip install httpx" }, permissionMode: "default" },
   };
   return review(c, { action: "keep" }, { now: "2026-07-19" }).entry!.id;
 }

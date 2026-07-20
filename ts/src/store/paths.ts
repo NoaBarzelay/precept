@@ -59,3 +59,8 @@ export function decisionsLogPath(): string {
 export function faultsLogPath(): string {
   return join(stateDir(), "faults.jsonl");
 }
+
+/** The append-only tool-call history: the traffic checks are validated against. */
+export function historyLogPath(): string {
+  return join(stateDir(), "history.jsonl");
+}

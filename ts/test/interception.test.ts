@@ -44,6 +44,7 @@ function commitOperationalRule(): void {
         { op: "not", check: { op: "str.contains", field: { kind: "input", key: "command" }, value: "uv pip" } },
       ],
     },
+    example: { toolName: "Bash", toolInput: { command: "pip install httpx" }, permissionMode: "default" },
   };
   const { entry } = review(c, { action: "keep" }, { now: "2026-07-19" });
   // graduate it: rewrite the card as operational (probation lifecycle is a
@@ -75,6 +76,7 @@ test("a probationary hard rule compiles to ask, not deny", () => {
     signalKind: "correction",
     tier: "hard",
     check: { op: "str.contains", field: { kind: "input", key: "command" }, value: "git commit" },
+    example: { toolName: "Bash", toolInput: { command: "git commit -m x" }, permissionMode: "default" },
   };
   review(c, { action: "keep" }, { now: "2026-07-19" }); // stays probationary
   expect(compile(allEntries())[0]!.outcome).toBe("ask");

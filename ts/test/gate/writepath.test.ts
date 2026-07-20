@@ -136,6 +136,7 @@ test("a user correction may source a hard rule, entering probation", () => {
     signalKind: "correction",
     tier: "hard",
     check: { op: "str.contains", field: { kind: "input", key: "command" }, value: "pip install" },
+    example: { toolName: "Bash", toolInput: { command: "pip install httpx" }, permissionMode: "default" },
   };
   const { entry } = review(proposed, { action: "keep" }, { now: "2026-07-19" });
   expect(entry!.tier).toBe("hard");

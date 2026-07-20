@@ -11,11 +11,13 @@ import {
   type SignalKind,
   SCHEMA_VERSION,
 } from "../domain/entry.ts";
+import { reachable } from "../domain/validate.ts";
 import {
   type DecisionRecord,
   appendDecision,
   deltaBetween,
 } from "../record/decision.ts";
+import { readHistory } from "../record/history.ts";
 import { Index } from "../retrieve/index.ts";
 import { writeCard } from "../store/card.ts";
 import { cardPath } from "../store/paths.ts";
@@ -75,7 +77,7 @@ export function review(
 
   const chosen =
     decision.action === "correct" ? decision.corrected : proposed;
-  const committed = applyProvenanceGate(chosen);
+  const committed = applyReachabilityGate(applyProvenanceGate(chosen));
   const entry = toEntry(committed, now, decisionId);
 
   // Write the decision first. A crash after this leaves a decision whose entry
@@ -112,6 +114,20 @@ export function applyProvenanceGate(candidate: Candidate): Candidate {
     return { ...rest, tier: "soft" };
   }
   return candidate;
+}
+
+/**
+ * Downgrade a hard candidate whose check has no demonstrated match, in recorded
+ * history or the triggering example, to guidance (D3, N5): an entry never
+ * claims enforcement it cannot show can fire.
+ */
+export function applyReachabilityGate(candidate: Candidate): Candidate {
+  if (candidate.tier !== "hard" || candidate.check === undefined) return candidate;
+  const calls = readHistory().map((h) => h.facts);
+  const examples = candidate.example !== undefined ? [candidate.example] : [];
+  if (reachable(candidate.check, calls, examples)) return candidate;
+  const { check: _check, example: _example, ...rest } = candidate;
+  return { ...rest, tier: "soft" };
 }
 
 function toEntry(candidate: Candidate, now: string, decisionId: string): Entry {

@@ -23,6 +23,7 @@ const ALLOWED: Record<string, string[]> = {
   cli: ["domain", "store", "retrieve", "record", "gate", "infer", "host", "projection"],
   injection: ["domain", "store", "retrieve", "host"],
   interception: ["domain", "host", "record", "projection"],
+  observation: ["domain", "host", "record"],
 };
 
 const MODULES = new Set(Object.keys(ALLOWED));
