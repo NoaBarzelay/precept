@@ -10,8 +10,12 @@ import {
 } from "./domain/entry.ts";
 import { firing } from "./domain/validate.ts";
 import { review } from "./gate/gate.ts";
+import { makeClient } from "./infer/client.ts";
+import { detect } from "./infer/detect.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
+import { readEvidence } from "./record/evidence.ts";
 import { readHistory } from "./record/history.ts";
+import { getPending, listPending, removePending } from "./record/queue.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
 import { allEntries, readCard, removeCard, writeCard } from "./store/card.ts";
@@ -143,6 +147,51 @@ export function confirmCmd(id: string): string {
   }
 }
 
+/** List the candidates the detector has proposed and are awaiting review. */
+export function pendingCmd(): string {
+  const pending = listPending();
+  if (pending.length === 0) return "(nothing pending review)";
+  return pending
+    .map((p) => {
+      const c = p.candidate;
+      const tier = c.tier === "hard" ? " [would enforce]" : "";
+      return `${p.id}  (${c.kind}, ${c.signalKind})${tier}\n  ${c.content}`;
+    })
+    .join("\n");
+}
+
+/** Keep a pending candidate: commit it through the review gate. */
+export function keepCmd(id: string): string {
+  if (id === undefined || id === "") return "usage: precept keep <id>";
+  const p = getPending(id);
+  if (p === undefined) return `no pending candidate ${id}`;
+  const { entry } = review(p.candidate, { action: "keep" });
+  removePending(id);
+  return `kept ${entry!.id} (${entry!.tier ?? entry!.kind})`;
+}
+
+/** Dismiss a pending candidate: record the decision, commit nothing. */
+export function dismissCmd(args: string[]): string {
+  const [id, ...rest] = args;
+  if (id === undefined || id === "") return "usage: precept dismiss <id> [reason]";
+  const p = getPending(id);
+  if (p === undefined) return `no pending candidate ${id}`;
+  review(p.candidate, { action: "dismiss", reason: rest.join(" ") || "dismissed at review" });
+  removePending(id);
+  return `dismissed ${id}`;
+}
+
+/** Run detection over recorded evidence with the configured backend. Async
+ * because it consults the model; not routed through the sync dispatcher. */
+export async function detectCmd(): Promise<string> {
+  const evidence = readEvidence();
+  if (evidence.length === 0) return "(no recorded evidence to review)";
+  const queued = await detect(evidence, makeClient());
+  return queued === 0
+    ? "detection ran; nothing proposed (no backend configured, or all abstained)"
+    : `detection queued ${queued} candidate(s) for review`;
+}
+
 /** Show how often a rule would have fired over recorded history (the review
  * surface: judge a rule by real cases, not a rationale). */
 export function firingCmd(id: string): string {
@@ -207,11 +256,19 @@ export function runCli(argv: string[]): string {
       return rejectCmd(rest);
     case "firing":
       return firingCmd(rest[0] ?? "");
+    case "pending":
+      return pendingCmd();
+    case "keep":
+      return keepCmd(rest[0] ?? "");
+    case "dismiss":
+      return dismissCmd(rest);
     default:
-      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing";
+      return "commands: note, recall, list, remove, reindex, compile, confirm, reject, firing, detect, pending, keep, dismiss";
   }
 }
 
 if (import.meta.main) {
-  console.log(runCli(process.argv.slice(2)));
+  const argv = process.argv.slice(2);
+  const output = argv[0] === "detect" ? await detectCmd() : runCli(argv);
+  console.log(output);
 }

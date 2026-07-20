@@ -64,3 +64,8 @@ export function faultsLogPath(): string {
 export function historyLogPath(): string {
   return join(stateDir(), "history.jsonl");
 }
+
+/** The durable review queue: one file per candidate awaiting review. */
+export function pendingDir(): string {
+  return join(stateDir(), "pending");
+}

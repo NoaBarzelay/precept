@@ -26,3 +26,19 @@ export class FakeClient implements InferenceClient {
     return Promise.resolve(this.script(evidence));
   }
 }
+
+/** A client that always abstains: the offline default until a real backend is wired. */
+export class NullClient implements InferenceClient {
+  propose(): Promise<Candidate | null> {
+    return Promise.resolve(null);
+  }
+}
+
+/**
+ * Select the inference backend. The real subscription-backed client (claude -p)
+ * is the next batch; today an unconfigured environment abstains rather than
+ * pretending to learn.
+ */
+export function makeClient(): InferenceClient {
+  return new NullClient();
+}
