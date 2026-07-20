@@ -107,6 +107,8 @@ export interface Entry {
   readonly validity: Validity;
   readonly provenance: Provenance;
   readonly status: EntryStatus;
+  /** The entry that replaced this one, present only when status is superseded. */
+  readonly supersededBy?: string;
   /** Enforcement, present only when the entry blocks. */
   readonly tier?: EnforcementTier;
   /** The compiled check, required when tier is "hard". */
@@ -171,6 +173,14 @@ export function entryError(entry: Entry): string | null {
   }
   if (entry.confirmations !== undefined && entry.confirmations < 0) {
     return "confirmations cannot be negative";
+  }
+  // Currency invariant: a supersededBy pointer is meaningful only on a
+  // superseded entry, and a superseded entry must name its successor.
+  if (entry.supersededBy !== undefined && entry.status !== "superseded") {
+    return "supersededBy is only valid on a superseded entry";
+  }
+  if (entry.status === "superseded" && entry.supersededBy === undefined) {
+    return "a superseded entry must record supersededBy";
   }
   return null;
 }
@@ -237,6 +247,48 @@ export function narrowOnReject(entry: Entry, condition?: string): Entry {
       ? { validity: { ...entry.validity, condition } }
       : {}),
   };
+}
+
+/**
+ * Retire an active entry (R1.9, R1.16): invalidate-not-delete. It leaves
+ * retrieval and enforcement but the card is kept for audit (N6). Sets an
+ * end date so valid-time is closed, and bumps the version. A no-op on an entry
+ * that is not active, so a repeated sweep is safe. Pure.
+ */
+export function retire(entry: Entry, at: string): Entry {
+  if (entry.status !== "active") return entry;
+  return {
+    ...entry,
+    version: entry.version + 1,
+    status: "retired",
+    validity: { ...entry.validity, validUntil: at },
+  };
+}
+
+/**
+ * Supersede an active entry with the one that replaces it (R1.10, R2.9): a
+ * directed fold, recording the successor's id. Excluded from retrieval and
+ * enforcement, retained for audit. A no-op unless active. Pure.
+ */
+export function supersede(entry: Entry, byId: string, at: string): Entry {
+  if (entry.status !== "active") return entry;
+  return {
+    ...entry,
+    version: entry.version + 1,
+    status: "superseded",
+    supersededBy: byId,
+    validity: { ...entry.validity, validUntil: at },
+  };
+}
+
+/**
+ * Whether an entry's deliberate expiry has passed as of `today` (ISO date). The
+ * maintenance sweep uses this to retire expired entries; `isLive` stays clockless
+ * (domain is pure), so this is the one currency test that takes the date.
+ */
+export function isExpired(entry: Entry, today: string): boolean {
+  const until = entry.validity.validUntil;
+  return until !== undefined && until.slice(0, 10) <= today;
 }
 
 /** A probationary hard rule may never emit a deny (fitness function R1.19-R1.21). */

@@ -47,6 +47,7 @@ export function serialize(entry: Entry): string {
     validity: pruneUndefined(entry.validity),
     provenance: pruneUndefined(entry.provenance),
   };
+  if (entry.supersededBy !== undefined) front.supersededBy = entry.supersededBy;
   if (entry.tier !== undefined) front.tier = entry.tier;
   if (entry.lifecycle !== undefined) front.lifecycle = entry.lifecycle;
   if (entry.confirmations !== undefined) front.confirmations = entry.confirmations;
@@ -83,6 +84,9 @@ export function parse(text: string): Entry {
     validity: front.validity as Entry["validity"],
     provenance: front.provenance as Entry["provenance"],
     status: front.status as Entry["status"],
+    ...(front.supersededBy !== undefined
+      ? { supersededBy: front.supersededBy as string }
+      : {}),
     ...(front.tier !== undefined ? { tier: front.tier as Entry["tier"] } : {}),
     ...(check !== undefined ? { check } : {}),
     ...(front.lifecycle !== undefined

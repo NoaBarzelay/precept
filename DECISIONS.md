@@ -267,7 +267,55 @@ Recorded so the log matches the code, not just the intent above.
   toward capture, not toward dropping a turn. An explicit provenance field on the evidence record
   (ARCHITECTURE 6.2 names one) is deferred: nothing reads it yet (the gate keys on the candidate's
   signal kind), and the two produced classes map cleanly from signal kind for now.
+### Currency and governance
+
+The catalog must be curated, not only appended to (Risk 4): a rule expires when its situation ends
+[R1.9], a newer entry folds over an older [R1.10, R2.9], a contradiction is surfaced before a new
+entry takes effect [R1.4, R2.11], and an override or counter-activity flags a rule for reconfirmation
+[R1.11, R1.12]. Currency is invalidate-not-delete: the `status` field (active/retired/superseded)
+already encodes it, so a governed entry is excluded, never destroyed (audit, N6). The design across
+its real axes, decided for this use case (single user, few-hundred-entry corpus):
+
+1. **What makes a stated condition checkable.** A condition is free text ("always", "the project uses
+   uv", "on the release branch"). Options: (a) a model decides whether it still holds, rejected, it
+   reintroduces the per-entry model cost and nondeterminism the whole design minimizes; (b) a general
+   observable-predicate language attached to every entry, rejected as YAGNI here, most conditions are
+   "always" (not observable) and it would be a second ad-hoc check grammar; (c) use only the facts
+   Precept already holds. Decision: (c). Two facts are observable with no new machinery, an explicit
+   `validUntil` date (a deliberate expiry) and a repository/path scope whose target can cease to
+   exist; a fuzzy free-text condition is never auto-retired and decays only by manual retirement or an
+   override signal. Revisit trigger: if entries repeatedly accrue conditions that need machine-checking,
+   add a closed observable-predicate set modeled on the check language.
+
+2. **When governance runs**, by latency budget. Retrieval-time already filters non-live entries [R2.8,
+   `isLive`]. Review-time surfaces a lexical near-duplicate of the same kind and scope to the reviewer
+   before a keep [R1.4], advisory, from the existing FTS index, no model. An off-turn `maintain` sweep
+   [ARCHITECTURE 6.5] applies the deterministic transitions (expire past-`validUntil` entries, and in
+   part 2 flag override-contradicted rules); a command now, schedulable later, never on the turn.
+
+3. **Supersession vs contradiction.** Supersession [R1.10] is a directed replace (new over old);
+   contradiction [R1.4] is an undirected clash left for the human to reconcile. Deterministic semantic
+   contradiction over free text is not attempted (a model's job, outside the no-model maintenance
+   budget); review-time surfaces lexical near-duplicates and the reviewer chooses keep-and-supersede,
+   keep-both, or dismiss. A superseded entry records `supersededBy` and goes status=superseded.
+
+4. **Override-triggered reconfirmation** [R1.11, R1.12] (part 2). An operational hard rule whose
+   compiled check matches a call that nonetheless executed (the call is in recorded history) is
+   evidence of an override or a contradiction by practice; the sweep resets it to probationary so it
+   must re-earn its confirmations. Deterministic, reusing the compiled checks and the tool-call history
+   the observation path already records.
+
+5. **A governed rule leaves the hot path.** Retiring or superseding a hard operational rule must drop
+   it from the compiled projection and the search index, or a dead rule keeps enforcing; every
+   transition recompiles and reindexes.
+
+Built (part 1): the domain transitions (`retire`, `supersede`, `isExpired`, the `supersededBy` field),
+the CLI `retire`/`supersede` commands (locked read-modify-write, recompile, reindex), and review-time
+lexical conflict surfacing on `keep`/`pending`. Designed, next (part 2): the `maintain` expiry sweep
+with teeth once entries carry expiries, and override-triggered reconfirmation from history. Not planned
+unless triggered: the observable-predicate language and model-based contradiction.
+
 - **Not yet built, so not yet claimed as in-place** despite the intent above: the per-card version
   CAS and the lock around the primary commit path (only the lifecycle read-modify-write is locked
-  today), `rewrite`/`updatedInput` as an outcome (the engine is deny/ask/allow), git as the
-  transaction-time store (asserted, not read by code), and the whole currency/governance surface.
+  today), `rewrite`/`updatedInput` as an outcome (the engine is deny/ask/allow), and git as the
+  transaction-time store (asserted, not read by code).

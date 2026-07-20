@@ -2,7 +2,7 @@
 
 State of the `ts/` rebuild so another session can continue it. The product spec is [../README.md](../README.md), the design is [../ARCHITECTURE.md](../ARCHITECTURE.md), the decisions are [../DECISIONS.md](../DECISIONS.md), and the module map is [README.md](README.md).
 
-As of this writing: **155 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
+As of this writing: **169 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI (the Python reference suite) green.**
 
 ## How to resume
 
@@ -23,7 +23,7 @@ Two hard rules when committing here:
 1. **The repo-privacy CI gate scans `ts/` text files** for machine-specific markers (`/Users/<name>/`, phone numbers, the vault mount). Keep fixtures and code neutral (use `/work/...`), or CI fails.
 2. **A parallel session edits the Python source.** Stage only `ts/` and docs; never `git add` the Python files.
 
-## What is built (15 batches)
+## What is built (16 batches)
 
 | Area | Modules | Notes |
 |---|---|---|
@@ -40,14 +40,15 @@ Two hard rules when committing here:
 | Transcript reader | `host/transcript`, `observation` (SessionEnd), cli `ingest` | Read a finished session transcript, draft evidence: a verbatim window of surrounding turns per human-typed turn (provenance gate on the transcript's own shape), and a kind-aware silent-edit diff (full `Write` by equality, `Edit`/`MultiEdit`/`NotebookEdit` fragment by presence, agent output vs disk state, R1.1). Content-derived evidence ids + id-dedup make a re-fired SessionEnd idempotent (no cursor), robust to a compacted/rotated transcript. This closes the automatic-learning loop: evidence is now self-produced, not only fed. |
 | Install | `host/install`, cli `install`/`uninstall` | Register the entrypoints in `~/.claude/settings.json`: interception on PreToolUse (`*`), injection on SessionStart/UserPromptSubmit, observation on PostToolUse/SessionEnd. Commands run as `bun <abs entrypoint>` prefixed with a `PRECEPT_MANAGED=1` self-marker, so entries are identifiable in-place with no custom keys, install is idempotent, and uninstall is the exact inverse (N8). Atomic write with `.bak`, preserves the user's own hooks, settings path env-overridable for hermetic tests. This is what attaches Precept to Claude Code in real use, so the four hooks now fire on their own. |
 | Detect cost gate | `infer/prefilter`, `infer/detect` | A cheap, recall-biased pre-filter before the model (Risk 5, R1.18): corrections/silent-edits/stated-knowledge/agent-research always propose; a plain instruction proposes only on durable cues (always/never/use/prefer/...), so a one-off task turn spends no call. Filtered evidence stays in the append-only log for the R1.14 hindsight pass. `detect` returns queued/proposed/filtered counts. |
+| Currency (part 1) | `domain/entry` (retire/supersede/isExpired), `domain/currency`, cli `retire`/`supersede` | Invalidate-not-delete governance (Risk 4). `retire` closes valid-time and drops the entry from the projection and index; `supersede` folds an entry over its successor, recording `supersededBy`. Review-time surfaces a lexical same-kind same-scope near-duplicate on `pending`/`keep` so the reviewer can supersede it (R1.4). Design note for the full surface (observable conditions, the sweep, override reconfirmation) is in DECISIONS.md. |
 
 Entrypoints (the hook binaries): `interception.ts` (PreToolUse), `injection.ts` (SessionStart/UserPromptSubmit), `observation.ts` (PostToolUse + SessionEnd), `cli.ts`. All no-op under the `PRECEPT_INFERENCE_SUBPROCESS` sentinel (fork-bomb guard).
 
-CLI commands: `install uninstall note recall list remove reindex compile confirm reject firing ingest detect pending keep dismiss`.
+CLI commands: `install uninstall note recall list remove reindex compile confirm reject retire supersede firing ingest detect pending keep dismiss`.
 
 ## What is NOT built (the pickup list, roughly in priority order)
 
-1. **Currency / governance sweeps** (R1.9-R1.12, R2.8-R2.11). `retired`/`superseded` statuses exist and are excluded from retrieval, but nothing transitions an entry into them. `validate.subsumes` is built but unused. Needs a scheduled maintenance path: validity sweep, supersede, conflict detection, override/divergence reconfirmation. This is the Risk-4 mitigation; currently `isLive`'s stale-exclusion is vacuous.
+1. **Currency / governance, part 2** (R1.9, R1.11-R1.12). Part 1 landed (`retire`/`supersede` transitions, review-time duplicate surfacing; design note in DECISIONS.md). Remaining, all off-turn in a `maintain` command: the expiry sweep with teeth (retire past-`validUntil` entries once entries carry deliberate expiries), override-triggered reconfirmation (reset an operational hard rule to probationary when its check matched a call that nonetheless executed, from recorded history), and the advisory subsumes-based supersession report (`validate.subsumes` is built but unused). Not planned unless triggered: an observable-predicate language, model-based semantic contradiction.
 2. **Correcting the inference from deltas** (R1.13). `deltaBetween` is computed and stored in decision records; nothing feeds it back into `infer` (no exemplar/standing-instruction/calibration). Recording half only.
 3. **Turn-end judgment tier** (R1.18, N13). A `Stop` entrypoint for structural checks (needs a parser, tree-sitter, off the hot path) and the model-verdict tier. Deferred by design.
 4. **Full write-path CAS.** Only the lifecycle read-modify-write (`confirm`/`reject`) takes the lock and bumps `version`. `writeCard`/`gate.review` do a plain atomic rename with no version check, so two parallel writers (or the Python runtime during the strangler) can still clobber. Add the CAS check to `writeCard`.

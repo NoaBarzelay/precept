@@ -3,10 +3,14 @@
 // strings so they are testable; main() prints them.
 
 import type { Candidate } from "./domain/candidate.ts";
+import { conflictsAmong } from "./domain/currency.ts";
 import {
   confirmOnce,
+  type Entry,
   narrowOnReject,
+  retire,
   type Scope,
+  supersede,
 } from "./domain/entry.ts";
 import { firing } from "./domain/validate.ts";
 import { install, registeredEvents, uninstall } from "./host/install.ts";
@@ -121,6 +125,82 @@ function recompile(): void {
   writeProjection(compile(allEntries()));
 }
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Drop one entry from the search index (a governed entry leaves retrieval). */
+function dropFromIndex(id: string): void {
+  const index = new Index();
+  try {
+    index.removeById(id);
+  } finally {
+    index.close();
+  }
+}
+
+/**
+ * Reconcile the derived state after a currency transition: a retired or
+ * superseded entry must leave both the compiled projection (or a dead hard rule
+ * keeps enforcing) and the search index (or it keeps being retrieved).
+ */
+function reconcileAfterGovern(id: string): void {
+  recompile();
+  dropFromIndex(id);
+}
+
+/** Live entries that lexically and structurally conflict with a candidate (R1.4). */
+function conflictsFor(candidate: Candidate): Entry[] {
+  const ids = [...new Set(retrieve(candidate.content).map((h) => h.id))];
+  const entries: Entry[] = [];
+  for (const id of ids) {
+    try {
+      entries.push(readCard(id));
+    } catch {
+      // a hit whose card was removed since indexing: skip
+    }
+  }
+  return conflictsAmong(candidate, entries);
+}
+
+/** Retire an entry: invalidate-not-delete, and drop it from the hot path (R1.9). */
+export function retireCmd(id: string): string {
+  if (id === undefined || id === "") return "usage: precept retire <id>";
+  let card;
+  try {
+    card = readCard(id);
+  } catch {
+    return `no such entry: ${id}`;
+  }
+  if (card.status !== "active") return `${id} is already ${card.status}`;
+  withCardLock(id, () => writeCard(retire(readCard(id), today())));
+  reconcileAfterGovern(id);
+  return `retired ${id}`;
+}
+
+/** Supersede an entry with the one that replaces it (R1.10, R2.9). */
+export function supersedeCmd(args: string[]): string {
+  const [oldId, newId] = args;
+  if (oldId === undefined || oldId === "" || newId === undefined || newId === "") {
+    return "usage: precept supersede <old-id> <new-id>";
+  }
+  let older;
+  try {
+    older = readCard(oldId);
+  } catch {
+    return `no such entry: ${oldId}`;
+  }
+  try {
+    readCard(newId);
+  } catch {
+    return `no such successor: ${newId}`;
+  }
+  if (older.status !== "active") return `${oldId} is already ${older.status}`;
+  withCardLock(oldId, () => writeCard(supersede(readCard(oldId), newId, today())));
+  reconcileAfterGovern(oldId);
+  return `superseded ${oldId} by ${newId}`;
+}
+
 /** Confirm a probationary rule's enforcement was intended (R1.21). */
 export function confirmCmd(id: string): string {
   if (id === undefined || id === "") return "usage: precept confirm <id>";
@@ -157,7 +237,12 @@ export function pendingCmd(): string {
     .map((p) => {
       const c = p.candidate;
       const tier = c.tier === "hard" ? " [would enforce]" : "";
-      return `${p.id}  (${c.kind}, ${c.signalKind})${tier}\n  ${c.content}`;
+      const conflicts = conflictsFor(c);
+      const warn =
+        conflicts.length > 0
+          ? `\n  may duplicate: ${conflicts.map((e) => e.id).join(", ")} (review to reconcile)`
+          : "";
+      return `${p.id}  (${c.kind}, ${c.signalKind})${tier}\n  ${c.content}${warn}`;
     })
     .join("\n");
 }
@@ -167,9 +252,15 @@ export function keepCmd(id: string): string {
   if (id === undefined || id === "") return "usage: precept keep <id>";
   const p = getPending(id);
   if (p === undefined) return `no pending candidate ${id}`;
+  // Surface an existing near-duplicate so the reviewer can supersede it (R1.4).
+  const conflicts = conflictsFor(p.candidate);
   const { entry } = review(p.candidate, { action: "keep" });
   removePending(id);
-  return `kept ${entry!.id} (${entry!.tier ?? entry!.kind})`;
+  const note =
+    conflicts.length > 0
+      ? `; may duplicate ${conflicts.map((e) => e.id).join(", ")} (precept supersede <id> ${entry!.id})`
+      : "";
+  return `kept ${entry!.id} (${entry!.tier ?? entry!.kind})${note}`;
 }
 
 /** Dismiss a pending candidate: record the decision, commit nothing. */
@@ -306,6 +397,10 @@ export function runCli(argv: string[]): string {
       return confirmCmd(rest[0] ?? "");
     case "reject":
       return rejectCmd(rest);
+    case "retire":
+      return retireCmd(rest[0] ?? "");
+    case "supersede":
+      return supersedeCmd(rest);
     case "firing":
       return firingCmd(rest[0] ?? "");
     case "install":
@@ -321,7 +416,7 @@ export function runCli(argv: string[]): string {
     case "dismiss":
       return dismissCmd(rest);
     default:
-      return "commands: install, uninstall, note, recall, list, remove, reindex, compile, confirm, reject, firing, ingest, detect, pending, keep, dismiss";
+      return "commands: install, uninstall, note, recall, list, remove, reindex, compile, confirm, reject, retire, supersede, firing, ingest, detect, pending, keep, dismiss";
   }
 }
 
