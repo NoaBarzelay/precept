@@ -17,6 +17,9 @@ import { noteFault } from "./record/fault.ts";
 
 /** Handle one PreToolUse event given its raw JSON, returning the hook's stdout. */
 export function runInterception(raw: string): string {
+  // Recursion guard: a claude call Precept itself spawned must not re-fire
+  // Precept's hooks (the fork-bomb from the Python history).
+  if (process.env.PRECEPT_INFERENCE_SUBPROCESS === "1") return emptyOutput();
   try {
     const event = parseEvent(raw);
     if (event.kind !== "PreToolUse") return emptyOutput();

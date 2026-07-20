@@ -13,6 +13,7 @@ import { recordCall } from "./record/history.ts";
 
 /** Handle one hook event given its raw JSON, returning the hook's stdout. */
 export function runObservation(raw: string): string {
+  if (process.env.PRECEPT_INFERENCE_SUBPROCESS === "1") return emptyOutput();
   try {
     const event = parseEvent(raw);
     if (event.kind === "PostToolUse") {

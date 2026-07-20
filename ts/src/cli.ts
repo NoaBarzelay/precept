@@ -10,7 +10,7 @@ import {
 } from "./domain/entry.ts";
 import { firing } from "./domain/validate.ts";
 import { review } from "./gate/gate.ts";
-import { makeClient } from "./infer/client.ts";
+import { makeClient } from "./infer/cli_client.ts";
 import { detect } from "./infer/detect.ts";
 import { compile, writeProjection } from "./projection/projection.ts";
 import { readEvidence } from "./record/evidence.ts";
