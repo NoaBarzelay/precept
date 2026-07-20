@@ -10,6 +10,7 @@ import {
 function knowledge(over: Partial<Entry> = {}): Entry {
   return {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     id: "staging-runs-on-render",
     kind: "knowledge",
     scope: { kind: "repository", repository: "acme-api" },
@@ -24,6 +25,7 @@ function knowledge(over: Partial<Entry> = {}): Entry {
 function hardRule(over: Partial<Entry> = {}): Entry {
   return {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     id: "uv-not-pip",
     kind: "rule",
     scope: { kind: "repository", repository: "acme-api" },

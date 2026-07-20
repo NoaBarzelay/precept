@@ -14,13 +14,19 @@ export interface RetrieveOptions {
   maxChars?: number;
 }
 
-const DEFAULTS = { limit: 8, floor: 0, maxChars: 4000 } as const;
+/**
+ * The N9 injection bounds, from the README ("2,000 characters, top 5 entries").
+ * The relevance floor is a calibration knob left at 0 until a Recall@5 baseline
+ * sets it, consistent with the thresholds the spec leaves unset by design.
+ */
+export const INJECTION_BOUNDS = { limit: 5, floor: 0, maxChars: 2000 } as const;
 
-/** Search the default index for the query, applying the injection budget. */
+/** Search the default index for the query, applying the N9 injection budget. */
 export function retrieve(query: string, opts: RetrieveOptions = {}): Hit[] {
+  const bounded = { ...INJECTION_BOUNDS, ...opts };
   const index = new Index();
   try {
-    return budget(index.search(query, opts), opts);
+    return budget(index.search(query, bounded), bounded);
   } finally {
     index.close();
   }
@@ -28,7 +34,7 @@ export function retrieve(query: string, opts: RetrieveOptions = {}): Hit[] {
 
 /** Apply the total-size cap over already count- and floor-bounded hits. */
 export function budget(hits: Hit[], opts: RetrieveOptions = {}): Hit[] {
-  const maxChars = opts.maxChars ?? DEFAULTS.maxChars;
+  const maxChars = opts.maxChars ?? INJECTION_BOUNDS.maxChars;
   const out: Hit[] = [];
   let used = 0;
   for (const h of hits) {

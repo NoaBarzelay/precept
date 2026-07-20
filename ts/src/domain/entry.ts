@@ -92,6 +92,13 @@ export type LifecycleState = "probationary" | "operational";
 
 export interface Entry {
   readonly schemaVersion: number;
+  /**
+   * The per-card revision, bumped on every write. It is the compare-and-swap
+   * token the write model uses to detect a concurrent clobber (ARCHITECTURE
+   * section 7), including the Python runtime writing the same card during the
+   * strangler. Distinct from schemaVersion, which is the format version.
+   */
+  readonly version: number;
   readonly id: string;
   readonly kind: EntryKind;
   readonly scope: Scope;
@@ -120,6 +127,9 @@ const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 export function entryError(entry: Entry): string | null {
   if (entry.schemaVersion !== SCHEMA_VERSION) {
     return `schemaVersion ${entry.schemaVersion} != ${SCHEMA_VERSION}`;
+  }
+  if (!Number.isInteger(entry.version) || entry.version < 1) {
+    return `version must be a positive integer, got ${entry.version}`;
   }
   if (!ID_RE.test(entry.id)) return `invalid id '${entry.id}'`;
   if (!ENTRY_KINDS.includes(entry.kind)) return `unknown kind '${entry.kind}'`;
@@ -171,6 +181,8 @@ function scopeError(scope: Scope): string | null {
       return scope.glob.trim() === "" ? "empty path scope" : null;
     case "situation":
       return scope.name.trim() === "" ? "empty situation scope" : null;
+    default:
+      return `unknown scope kind '${(scope as { kind: string }).kind}'`;
   }
 }
 

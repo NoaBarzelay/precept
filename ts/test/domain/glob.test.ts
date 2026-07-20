@@ -25,3 +25,14 @@ test("exact and negative", () => {
   expect(globMatch("package.json", "package.json")).toBe(true);
   expect(globMatch("package.json", "tsconfig.json")).toBe(false);
 });
+
+test("many doublestars stay polynomial and correct", () => {
+  // Without memoizing the ** branch this is exponential in the number of **.
+  const glob = "**/**/**/**/**/**/x";
+  const path = Array.from({ length: 20 }, (_, i) => `s${i}`).join("/");
+  const start = Bun.nanoseconds();
+  expect(globMatch(glob, path)).toBe(false); // no trailing "x"
+  expect(globMatch(glob, `${path}/x`)).toBe(true);
+  const ms = (Bun.nanoseconds() - start) / 1e6;
+  expect(ms).toBeLessThan(100);
+});

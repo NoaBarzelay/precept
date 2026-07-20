@@ -96,3 +96,21 @@ test("checkError flags a bad regex atom", () => {
   expect(checkError({ op: "str.regex", field: { kind: "tool" }, pattern: "a(b" })).not.toBeNull();
   expect(checkError(noPlainPip)).toBeNull();
 });
+
+test("checkError rejects a structurally malformed check", () => {
+  // These arrive as untrusted JSON from a card; the union type cannot guard them.
+  expect(checkError({ op: "totally-bogus", field: { kind: "tool" } } as unknown as Check)).toContain("unknown check op");
+  expect(checkError({ op: "totally-bogus" } as unknown as Check)).not.toBeNull();
+  expect(checkError({ op: "str.eq", value: "x" } as unknown as Check)).toContain("field");
+  expect(checkError({ op: "str.eq", field: { kind: "bogus" }, value: "x" } as unknown as Check)).toContain("field kind");
+  expect(checkError({ op: "int.cmp", field: { kind: "tool" }, cmp: "eq", value: 1 } as unknown as Check)).toContain("cmp");
+  expect(checkError({ op: "str.in", field: { kind: "tool" }, values: "x" } as unknown as Check)).toContain("values");
+  expect(checkError({ op: "input-no-key", field: { kind: "input" }, value: "x" } as unknown as Check)).not.toBeNull();
+});
+
+test("evaluate fails closed on a malformed atom, never throws or returns undefined", () => {
+  const facts = bash("pip install x");
+  expect(evaluate({ op: "bogus" } as unknown as Check, facts)).toBe(false);
+  // missing field would throw if unguarded
+  expect(evaluate({ op: "str.eq", value: "x" } as unknown as Check, facts)).toBe(false);
+});

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Entry, SCHEMA_VERSION } from "../../src/domain/entry.ts";
 import { Index, sectionize } from "../../src/retrieve/index.ts";
-import { budget } from "../../src/retrieve/retrieve.ts";
+import { budget, INJECTION_BOUNDS, retrieve } from "../../src/retrieve/retrieve.ts";
 import { writeCard } from "../../src/store/card.ts";
 
 let home: string;
@@ -27,6 +27,7 @@ afterEach(() => {
 function entry(over: Partial<Entry> & Pick<Entry, "id" | "content">): Entry {
   return {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     kind: "knowledge",
     scope: { kind: "global" },
     validity: { validFrom: "2026-07-19", condition: "always" },
@@ -114,6 +115,20 @@ test("the injected slice stays bounded as the catalog grows (N9)", () => {
   expect(hits.length).toBeLessThanOrEqual(8);
   const total = hits.reduce((n, h) => n + h.text.length, 0);
   expect(total).toBeLessThanOrEqual(400 + (hits[hits.length - 1]?.text.length ?? 0));
+});
+
+test("the default retrieve path meets the stated N9 caps (5 / 2000)", () => {
+  const long = "Deploy detail. ".repeat(60); // ~900 chars each
+  for (let i = 0; i < 30; i++) {
+    writeCard(entry({ id: `note-${i}`, content: `Render deploy note ${i}. ${long}` }));
+  }
+  new Index().rebuild();
+  const hits = retrieve("render deploy note");
+  expect(hits.length).toBeLessThanOrEqual(INJECTION_BOUNDS.limit);
+  expect(hits.length).toBeLessThanOrEqual(5);
+  const total = hits.reduce((n, h) => n + h.text.length, 0);
+  // stops once the cap is exceeded, so at most one entry spills over it
+  expect(total).toBeLessThanOrEqual(INJECTION_BOUNDS.maxChars + long.length + 40);
 });
 
 test("empty or symbol-only query returns nothing, no FTS syntax error", () => {

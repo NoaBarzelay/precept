@@ -281,8 +281,10 @@ function compile(pattern: string): Nfa {
 const cache = new Map<string, Nfa>();
 
 /**
- * True if `pattern` matches anywhere in `input`. Linear-time NFA simulation,
- * no backtracking. Throws SyntaxError on an unsupported or malformed pattern.
+ * True if `pattern` matches anywhere in `input`. A single-pass NFA simulation:
+ * one left-to-right sweep, seeding the start state at every position for the
+ * unanchored search, so match time is O(n * m) in the input length n and NFA
+ * size m, with no backtracking. Throws SyntaxError on a malformed pattern.
  */
 export function regexTest(pattern: string, input: string): boolean {
   let nfa = cache.get(pattern);
@@ -290,12 +292,27 @@ export function regexTest(pattern: string, input: string): boolean {
     nfa = compile(pattern);
     cache.set(pattern, nfa);
   }
-  // Try to match starting at each position (unanchored search). Each start is
-  // its own linear simulation; anchors prune the search.
-  for (let start = 0; start <= input.length; start++) {
-    if (simulate(nfa, input, start)) return true;
+  const end = input.length;
+  let current = new Set<number>();
+  addState(nfa, nfa.start, current, 0, end);
+  if (current.has(nfa.accept)) return true;
+
+  for (let pos = 0; pos < end; pos++) {
+    const ch = input[pos]!;
+    const next = new Set<number>();
+    for (const s of current) {
+      const c = nfa.chars.get(s);
+      if (c !== undefined && c.test(ch)) {
+        addState(nfa, c.out, next, pos + 1, end);
+      }
+    }
+    // Seed a fresh start here: the implicit unanchored prefix. anchorStart is
+    // pruned at pos+1 != 0, so `^` still only matches at position 0.
+    addState(nfa, nfa.start, next, pos + 1, end);
+    current = next;
+    if (current.has(nfa.accept)) return true;
   }
-  return false;
+  return current.has(nfa.accept);
 }
 
 /** Validate a pattern at authoring time. Returns null if valid, else message. */
@@ -308,34 +325,13 @@ export function regexError(pattern: string): string | null {
   }
 }
 
-function simulate(nfa: Nfa, input: string, from: number): boolean {
-  let current = new Set<number>();
-  addState(nfa, nfa.start, current, from, 0, input.length);
-  if (current.has(nfa.accept)) return true;
-  for (let pos = from; pos < input.length; pos++) {
-    const ch = input[pos]!;
-    const nextStates = new Set<number>();
-    for (const s of current) {
-      const c = nfa.chars.get(s);
-      if (c !== undefined && c.test(ch)) {
-        addState(nfa, c.out, nextStates, pos + 1, from, input.length);
-      }
-    }
-    current = nextStates;
-    if (current.has(nfa.accept)) return true;
-    if (current.size === 0) return false;
-  }
-  return current.has(nfa.accept);
-}
-
-// Epsilon-closure that respects anchors. `pos` is the current input position,
-// `from` the search start, `end` the input length.
+// Epsilon-closure that respects anchors. `pos` is the input position at which
+// the states are entered; `end` is the input length.
 function addState(
   nfa: Nfa,
   s: number,
   set: Set<number>,
   pos: number,
-  from: number,
   end: number,
 ): void {
   if (set.has(s)) return;
@@ -344,6 +340,6 @@ function addState(
   set.add(s);
   const outs = nfa.splits.get(s);
   if (outs !== undefined) {
-    for (const o of outs) addState(nfa, o, set, pos, from, end);
+    for (const o of outs) addState(nfa, o, set, pos, end);
   }
 }

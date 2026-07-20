@@ -60,6 +60,16 @@ test("linear time on a would-be-catastrophic pattern", () => {
   expect(ms).toBeLessThan(50);
 });
 
+test("scales linearly, not quadratically, on long input", () => {
+  // A quadratic search (restart from every position) took ~23s at n=16000 on
+  // an all-`a` input against `a*b`. A single-pass O(n*m) sweep stays trivial.
+  const input = "a".repeat(20000);
+  const start = Bun.nanoseconds();
+  expect(regexTest("a*b", input)).toBe(false);
+  const ms = (Bun.nanoseconds() - start) / 1e6;
+  expect(ms).toBeLessThan(300); // quadratic would be tens of seconds
+});
+
 test("authoring-time validation rejects malformed patterns", () => {
   expect(regexError("a(b")).not.toBeNull();
   expect(regexError("a[b")).not.toBeNull();

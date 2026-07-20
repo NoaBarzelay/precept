@@ -13,20 +13,31 @@ export function globMatch(glob: string, path: string): boolean {
   const memo = new Map<string, boolean>();
 
   function seg(gi: number, pi: number): boolean {
-    if (gi === g.length) return pi === p.length;
-    const gs = g[gi]!;
-    if (gs === "**") {
-      // Match zero or more path segments.
-      for (let k = pi; k <= p.length; k++) {
-        if (seg(gi + 1, k)) return true;
-      }
-      return false;
-    }
-    if (pi === p.length) return false;
     const key = `${gi},${pi}`;
     const cached = memo.get(key);
     if (cached !== undefined) return cached;
-    const ok = matchSegment(gs, p[pi]!) && seg(gi + 1, pi + 1);
+
+    let ok: boolean;
+    if (gi === g.length) {
+      ok = pi === p.length;
+    } else {
+      const gs = g[gi]!;
+      if (gs === "**") {
+        // Match zero or more path segments. Memoized above, so several "**"
+        // segments cannot blow up exponentially.
+        ok = false;
+        for (let k = pi; k <= p.length; k++) {
+          if (seg(gi + 1, k)) {
+            ok = true;
+            break;
+          }
+        }
+      } else if (pi === p.length) {
+        ok = false;
+      } else {
+        ok = matchSegment(gs, p[pi]!) && seg(gi + 1, pi + 1);
+      }
+    }
     memo.set(key, ok);
     return ok;
   }

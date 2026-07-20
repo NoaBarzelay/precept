@@ -26,7 +26,10 @@ import { type Entry, entryError } from "../domain/entry.ts";
 import { cardPath, entriesDir } from "./paths.ts";
 
 const FENCE = "```";
-const CHECK_BLOCK = /```check\s*\n([\s\S]*?)\n```/;
+// The check block is the final block of the card (serialize always appends it
+// last), anchored to the end so a ```check fence appearing in prose content is
+// left in the body rather than mistaken for the check.
+const CHECK_BLOCK = /\n```check\s*\n([\s\S]*?)\n```\s*$/;
 
 /** Serialize an Entry to card text. Throws if the entry is invalid. */
 export function serialize(entry: Entry): string {
@@ -36,6 +39,7 @@ export function serialize(entry: Entry): string {
   // Frontmatter carries the typed fields; the check rides in the body.
   const front: Record<string, unknown> = {
     schemaVersion: entry.schemaVersion,
+    version: entry.version,
     id: entry.id,
     kind: entry.kind,
     scope: entry.scope,
@@ -71,6 +75,7 @@ export function parse(text: string): Entry {
 
   const entry: Entry = {
     schemaVersion: front.schemaVersion as number,
+    version: front.version as number,
     id: front.id as string,
     kind: front.kind as Entry["kind"],
     scope: front.scope as Entry["scope"],

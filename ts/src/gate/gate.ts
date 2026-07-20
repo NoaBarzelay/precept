@@ -78,14 +78,9 @@ export function review(
   const committed = applyProvenanceGate(chosen);
   const entry = toEntry(committed, now, decisionId);
 
-  writeCard(entry);
-  const index = new Index();
-  try {
-    index.upsert(entry);
-  } finally {
-    index.close();
-  }
-
+  // Write the decision first. A crash after this leaves a decision whose entry
+  // was not written (a harmless dangling record, reconcilable), rather than a
+  // committed card with no decision behind it, which would violate N6/N7.
   const delta = deltaBetween(proposed, committed);
   const record: DecisionRecord = {
     id: decisionId,
@@ -99,6 +94,14 @@ export function review(
       : {}),
   };
   appendDecision(record);
+
+  writeCard(entry);
+  const index = new Index();
+  try {
+    index.upsert(entry);
+  } finally {
+    index.close();
+  }
   return { decision: record, entry };
 }
 
@@ -115,6 +118,7 @@ function toEntry(candidate: Candidate, now: string, decisionId: string): Entry {
   const id = uniqueId(slugify(candidate.content));
   const base: Entry = {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     id,
     kind: candidate.kind,
     scope: candidate.scope,

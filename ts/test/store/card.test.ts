@@ -21,6 +21,7 @@ afterEach(() => {
 function knowledge(): Entry {
   return {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     id: "staging-on-render",
     kind: "knowledge",
     scope: { kind: "repository", repository: "acme-api" },
@@ -34,6 +35,7 @@ function knowledge(): Entry {
 function hardRule(): Entry {
   return {
     schemaVersion: SCHEMA_VERSION,
+    version: 1,
     id: "uv-not-pip",
     kind: "rule",
     scope: { kind: "repository", repository: "acme-api" },
@@ -92,4 +94,24 @@ test("parse rejects a card that violates the contract", () => {
 
 test("parse rejects text with no frontmatter", () => {
   expect(() => parse("just prose, no frontmatter")).toThrow(/frontmatter/);
+});
+
+test("a check fence inside prose content survives the round-trip", () => {
+  // Research notes about Precept's own check language legitimately contain a
+  // ```check block. It must stay in the body, not be mistaken for the check.
+  const e = {
+    ...knowledge(),
+    content:
+      "The check language uses blocks like:\n```check\n{ \"op\": \"str.eq\" }\n```\nThat is just documentation.",
+  };
+  const round = parse(serialize(e));
+  expect(round.content).toContain("```check");
+  expect(round.check).toBeUndefined();
+  expect(round).toEqual(e);
+});
+
+test("parse rejects a card whose check block is structurally malformed", () => {
+  const good = serialize(hardRule());
+  const bad = good.replace(/"op": "str.contains"/, '"op": "bogus-op"');
+  expect(() => parse(bad)).toThrow(/invalid card|unknown check op/);
 });
