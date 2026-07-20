@@ -44,3 +44,8 @@ export function indexDbPath(): string {
 export function evidenceLogPath(): string {
   return join(stateDir(), "evidence.jsonl");
 }
+
+/** The append-only decision-record log (operational state, N6). */
+export function decisionsLogPath(): string {
+  return join(stateDir(), "decisions.jsonl");
+}
