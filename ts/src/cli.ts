@@ -25,7 +25,7 @@ import { getPending, listPending, removePending } from "./record/queue.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
 import { allEntries, readCard, removeCard, writeCard } from "./store/card.ts";
-import { folderError, rescanVault } from "./store/vault.ts";
+import { folderError, readExternalNotes, rescanVault } from "./store/vault.ts";
 import { withCardLock } from "./store/lock.ts";
 
 interface NoteFlags {
@@ -112,7 +112,11 @@ export function reindexCmd(): string {
   } finally {
     index.close();
   }
-  return `reindexed ${allEntries().length} entries`;
+  const notes = readExternalNotes().length;
+  const entries = `${allEntries().length} entries`;
+  return notes === 0
+    ? `reindexed ${entries}`
+    : `reindexed ${entries} and ${notes} of Noa's own vault notes (read-only)`;
 }
 
 /** Recompile the catalog's hard rules into the projection the hot path reads. */

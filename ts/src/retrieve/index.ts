@@ -12,6 +12,7 @@ import { dirname } from "node:path";
 import type { Entry } from "../domain/entry.ts";
 import { allEntries } from "../store/card.ts";
 import { indexDbPath } from "../store/paths.ts";
+import { type ExternalDoc, readExternalNotes } from "../store/vault.ts";
 
 export interface Section {
   readonly anchor: string;
@@ -52,12 +53,21 @@ const STOPWORDS = new Set<string>([
   "will", "my", "your", "our", "me", "us", "so", "not", "no", "yes", "up",
 ]);
 
+/**
+ * Where a hit came from. `precept` is a governed entry: reviewed, kept, and
+ * subject to the lifecycle. `vault` is one of Noa's own knowledge notes, indexed
+ * read-only. Callers must be able to tell them apart, because presenting her own
+ * writing back to her as a recorded rule would be a lie about its provenance.
+ */
+export type Source = "precept" | "vault";
+
 export interface Hit {
   readonly id: string;
   readonly kind: string;
   readonly anchor: string;
   readonly text: string;
   readonly score: number;
+  readonly source: Source;
 }
 
 export class Index {
@@ -69,10 +79,19 @@ export class Index {
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run("PRAGMA synchronous = NORMAL");
+    // The index is a rebuildable projection, so a schema change drops and
+    // recreates rather than migrating: the cost is one rebuild, and carrying
+    // migration code for a derived table is not worth it.
+    const cols = this.db
+      .query("SELECT name FROM pragma_table_info('sections')")
+      .all() as { name: string }[];
+    if (cols.length > 0 && !cols.some((c) => c.name === "source")) {
+      this.db.run("DROP TABLE sections");
+    }
     this.db.run(
       `CREATE VIRTUAL TABLE IF NOT EXISTS sections USING fts5(
          id UNINDEXED, anchor UNINDEXED, kind UNINDEXED,
-         status UNINDEXED, valid_until UNINDEXED, body,
+         status UNINDEXED, valid_until UNINDEXED, source UNINDEXED, body,
          tokenize = 'porter unicode61'
        )`,
     );
@@ -82,13 +101,30 @@ export class Index {
   upsert(entry: Entry): void {
     this.removeById(entry.id);
     const insert = this.db.query(
-      `INSERT INTO sections (id, anchor, kind, status, valid_until, body)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sections (id, anchor, kind, status, valid_until, source, body)
+       VALUES (?, ?, ?, ?, ?, 'precept', ?)`,
     );
     const validUntil = entry.validity.validUntil ?? null;
     for (const s of sectionize(entry.content)) {
       const body = s.anchor === "" ? s.text : `${s.anchor}\n${s.text}`;
       insert.run(entry.id, s.anchor, entry.kind, entry.status, validUntil, body);
+    }
+  }
+
+  /**
+   * Insert or replace all sections of one of Noa's own notes. Indexed as
+   * permanently live: her notes carry no validity contract, so there is nothing
+   * to expire, and Precept has no standing to retire them.
+   */
+  upsertExternal(doc: ExternalDoc): void {
+    this.removeById(doc.path);
+    const insert = this.db.query(
+      `INSERT INTO sections (id, anchor, kind, status, valid_until, source, body)
+       VALUES (?, ?, 'knowledge', 'active', NULL, 'vault', ?)`,
+    );
+    for (const s of sectionize(doc.content)) {
+      const anchor = s.anchor === "" ? doc.title : s.anchor;
+      insert.run(doc.path, anchor, `${doc.title}\n${s.text}`);
     }
   }
 
@@ -108,6 +144,7 @@ export class Index {
   rebuild(): void {
     this.db.run("DELETE FROM sections");
     for (const entry of allEntries()) this.upsert(entry);
+    for (const doc of readExternalNotes()) this.upsertExternal(doc);
   }
 
   /**
@@ -116,7 +153,10 @@ export class Index {
    * (N9). Query text is reduced to word tokens joined with OR, so arbitrary
    * user text never trips FTS5 syntax.
    */
-  search(query: string, opts: { limit?: number; floor?: number } = {}): Hit[] {
+  search(
+    query: string,
+    opts: { limit?: number; floor?: number; source?: Source } = {},
+  ): Hit[] {
     const limit = opts.limit ?? 8;
     const floor = opts.floor ?? 0;
     const raw = query.toLowerCase().match(/[a-z0-9_]+/g);
@@ -126,15 +166,18 @@ export class Index {
     if (tokens.length === 0) return [];
     const match = tokens.map((t) => `"${t}"`).join(" OR ");
 
+    const bySource = opts.source === undefined ? "" : " AND source = ?";
+    const params: (string | number)[] =
+      opts.source === undefined ? [match, limit] : [match, opts.source, limit];
     const rows = this.db
       .query(
-        `SELECT id, kind, anchor, body AS text, -bm25(sections) AS score
+        `SELECT id, kind, anchor, source, body AS text, -bm25(sections) AS score
          FROM sections
-         WHERE sections MATCH ? AND status = 'active' AND valid_until IS NULL
+         WHERE sections MATCH ? AND status = 'active' AND valid_until IS NULL${bySource}
          ORDER BY bm25(sections)
          LIMIT ?`,
       )
-      .all(match, limit) as Hit[];
+      .all(...params) as Hit[];
     return rows.filter((r) => r.score >= floor);
   }
 

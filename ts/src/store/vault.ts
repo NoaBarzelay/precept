@@ -27,7 +27,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { type Entry, entryError, type Scope } from "../domain/entry.ts";
 import { vaultDir, vaultMapPath } from "./paths.ts";
@@ -293,4 +293,83 @@ function* markdownFiles(dir: string): Generator<string> {
     if (e.isDirectory()) yield* markdownFiles(abs);
     else if (e.name.endsWith(".md")) yield abs;
   }
+}
+
+// --- Noa's own notes, read-only -------------------------------------------
+//
+// Precept indexes its own entries so it can inject them. That covers only what
+// Precept happened to record, which is a thin slice of what Noa knows: her
+// vault holds hundreds of knowledge files she compiled herself, and retrieval
+// that ignores them answers "we have nothing on that" while the answer sits one
+// folder away. Worse, folding a Precept note into one of her files, which is the
+// right editorial move, used to delete it from retrieval.
+//
+// So her `type: knowledge` notes are indexed too, and strictly read-only:
+// nothing here returns an Entry, so none of them can reach a write path, be
+// retired, or be rewritten. They are documents to search, not entries to govern.
+
+/** One of Noa's own knowledge notes: searchable, never writable. */
+export interface ExternalDoc {
+  /** Vault-relative path, which is also its stable identity. */
+  readonly path: string;
+  readonly title: string;
+  readonly content: string;
+}
+
+/**
+ * Folders excluded from the read-only index.
+ *
+ * `Claude` is the memory directory, already loaded into every session by
+ * CLAUDE.md, so indexing it would inject the same text twice. `Claude
+ * Conversations` is session transcripts: high volume, and it would feed
+ * Precept's own past output back to it as though it were knowledge.
+ */
+const EXCLUDED_TOP_LEVEL = new Set(["Claude", "Claude Conversations"]);
+
+/** Frontmatter `type`, read from the head of the file without parsing YAML. */
+function frontmatterType(head: string): string | null {
+  if (!head.startsWith("---")) return null;
+  const end = head.indexOf("\n---", 3);
+  const front = end === -1 ? head : head.slice(0, end);
+  const m = /^type:\s*(\S+)\s*$/m.exec(front);
+  return m === null ? null : m[1]!;
+}
+
+/** Frontmatter `title`, falling back to the filename. */
+function frontmatterTitle(head: string, path: string): string {
+  const m = /^title:\s*(.+)$/m.exec(head);
+  const raw = m === null ? basename(path, ".md") : m[1]!.trim();
+  return raw.replace(/^["']|["']$/g, "");
+}
+
+/**
+ * Every knowledge note in the vault that Precept did not write. A note carrying
+ * a `precept:` block is Precept's own and is indexed as an entry instead, so
+ * including it here would double-index it.
+ */
+export function readExternalNotes(): ExternalDoc[] {
+  const vault = vaultDir();
+  if (vault === undefined) return [];
+  const out: ExternalDoc[] = [];
+  for (const abs of markdownFiles(vault)) {
+    const rel = relative(vault, abs);
+    if (EXCLUDED_TOP_LEVEL.has(rel.split("/")[0] ?? "")) continue;
+    let text: string;
+    try {
+      text = readFileSync(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const head = text.slice(0, 2000);
+    if (frontmatterType(head) !== "knowledge") continue; // `note` and untagged are hers to write, not knowledge
+    if (preceptIdOf(text) !== null) continue; // Precept's own, indexed as an entry
+    out.push({ path: rel, title: frontmatterTitle(head, rel), content: bodyOf(text) });
+  }
+  return out;
+}
+
+/** The note body, without its frontmatter. */
+function bodyOf(text: string): string {
+  const m = /^---\n[\s\S]*?\n---\n?([\s\S]*)$/.exec(text);
+  return (m === null ? text : (m[1] ?? "")).trim();
 }

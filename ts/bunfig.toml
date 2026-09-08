@@ -1,0 +1,4 @@
+[test]
+# Strip inherited PRECEPT_* variables so a developer shell configured for real
+# use cannot leak into the suite. See test/setup.ts.
+preload = ["./test/setup.ts"]
