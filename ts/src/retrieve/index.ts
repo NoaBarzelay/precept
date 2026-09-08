@@ -66,6 +66,42 @@ const STOPWORDS = new Set<string>([
  */
 export type Source = "precept" | "vault";
 
+/**
+ * How much rarer than the rarest query token a token must be to stay in the
+ * query. A token matching more than `RARITY_FACTOR` times as many sections as
+ * the rarest one carries no signal about which section is wanted.
+ */
+export const RARITY_FACTOR = 10;
+
+/**
+ * The subset of query tokens that actually narrows the corpus.
+ *
+ * Matching is OR: any single token qualifies a section, and BM25 then sums a
+ * contribution per matched term, so a section matching two common words
+ * outranks one matching a single rare word however discriminating it is. On
+ * this index the query "do a periodic automatic reindex" reduced to `periodic`
+ * (107 sections), `automatic` (119) and `reindex` (3). The correct answer, the
+ * one section about reindexing, matched `reindex` four times and placed 13th,
+ * behind a section whose entire claim to relevance was containing the ordinary
+ * word "Period" and the word "automatic" once each. Porter stemming makes this
+ * worse by collapsing `periodic` onto the everyday word "period".
+ *
+ * A relevance floor does not fix it and makes it worse: the noise scored 8.75
+ * and the right answer 5.66, so a floor cuts the signal first. The fix has to
+ * happen before ranking, by not asking about words that cannot discriminate.
+ *
+ * The rarest matching token always survives, so a query never reduces to
+ * nothing, and a query whose tokens are all comparably rare keeps all of them.
+ */
+export function discriminatingTokens(df: ReadonlyMap<string, number>): string[] {
+  const rarest = Math.min(...df.values());
+  const ceiling = rarest * RARITY_FACTOR;
+  return [...df.entries()]
+    .filter(([, n]) => n <= ceiling)
+    .sort((a, b) => a[1] - b[1])
+    .map(([t]) => t);
+}
+
 export interface Hit {
   readonly id: string;
   readonly kind: string;
@@ -223,9 +259,21 @@ export class Index {
     const raw = query.toLowerCase().match(/[a-z0-9_]+/g);
     if (raw === null) return [];
     // Drop stopwords so a common word like "is" cannot spuriously match.
-    const tokens = raw.filter((t) => !STOPWORDS.has(t));
+    const tokens = [...new Set(raw.filter((t) => !STOPWORDS.has(t)))];
     if (tokens.length === 0) return [];
-    const match = tokens.map((t) => `"${t}"`).join(" OR ");
+
+    // Keep only the tokens that actually narrow the corpus (see
+    // `discriminatingTokens`). A token matching nothing is dropped first: it
+    // cannot contribute, and leaving it in would make the rarest count zero.
+    const df = new Map<string, number>();
+    for (const t of tokens) {
+      const n = this.documentFrequency(t);
+      if (n > 0) df.set(t, n);
+    }
+    if (df.size === 0) return [];
+    const match = discriminatingTokens(df)
+      .map((t) => `"${t}"`)
+      .join(" OR ");
 
     const bySource = opts.source === undefined ? "" : " AND source = ?";
     const params: (string | number)[] =
@@ -240,6 +288,14 @@ export class Index {
       )
       .all(...params) as Hit[];
     return rows.filter((r) => r.score >= floor);
+  }
+
+  /** How many sections contain this token, after stemming. */
+  private documentFrequency(token: string): number {
+    const row = this.db
+      .query("SELECT count(*) AS c FROM sections WHERE sections MATCH ?")
+      .get(`"${token}"`) as { c: number } | null;
+    return row?.c ?? 0;
   }
 
   close(): void {
