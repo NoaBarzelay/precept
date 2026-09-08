@@ -347,6 +347,21 @@ export function ingestCmd(args: string[]): string {
     : `ingested transcript; recorded ${appended} evidence record(s)`;
 }
 
+/** Bring the vault half of the index up to date, re-reading only what changed.
+ * This is what the periodic background refresh runs. */
+export function refreshCmd(): string {
+  const index = new Index();
+  try {
+    const { added, updated, removed, unchanged } = index.refresh();
+    if (added + updated + removed === 0) {
+      return `vault index already current (${unchanged} notes)`;
+    }
+    return `vault index refreshed: ${added} added, ${updated} updated, ${removed} removed, ${unchanged} unchanged`;
+  } finally {
+    index.close();
+  }
+}
+
 /** Rescan the vault for Precept-written notes, repairing the id-to-path map
  * after Noa moves or renames them in Obsidian. */
 export function rescanCmd(): string {
@@ -427,6 +442,8 @@ export function runCli(argv: string[]): string {
       return listCmd();
     case "remove":
       return removeCmd(rest[0] ?? "");
+    case "refresh":
+      return refreshCmd();
     case "rescan":
       return rescanCmd();
     case "reindex":
@@ -456,7 +473,7 @@ export function runCli(argv: string[]): string {
     case "dismiss":
       return dismissCmd(rest);
     default:
-      return "commands: install, uninstall, note, recall, list, remove, reindex, rescan, compile, confirm, reject, retire, supersede, firing, ingest, detect, pending, keep, dismiss";
+      return "commands: install, uninstall, note, recall, list, remove, reindex, refresh, rescan, compile, confirm, reject, retire, supersede, firing, ingest, detect, pending, keep, dismiss";
   }
 }
 

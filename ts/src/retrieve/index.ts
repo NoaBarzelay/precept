@@ -7,12 +7,17 @@
 // can surface the applicable part rather than the whole document (R2.7).
 
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Entry } from "../domain/entry.ts";
 import { allEntries } from "../store/card.ts";
-import { indexDbPath } from "../store/paths.ts";
-import { type ExternalDoc, readExternalNotes } from "../store/vault.ts";
+import { indexDbPath, vaultManifestPath } from "../store/paths.ts";
+import {
+  type ExternalDoc,
+  readExternalNote,
+  readExternalNotes,
+  scanExternalNotes,
+} from "../store/vault.ts";
 
 export interface Section {
   readonly anchor: string;
@@ -142,9 +147,65 @@ export class Index {
    * leaves every fact unretrievable, which is the whole point of the index.
    */
   rebuild(): void {
-    this.db.run("DELETE FROM sections");
-    for (const entry of allEntries()) this.upsert(entry);
-    for (const doc of readExternalNotes()) this.upsertExternal(doc);
+    // One transaction, not one per statement. A rebuild is roughly 12,000
+    // inserts; committing each separately is the difference between seconds and
+    // half a minute.
+    const entries = allEntries();
+    const docs = readExternalNotes();
+    this.db.transaction(() => {
+      this.db.run("DELETE FROM sections");
+      for (const entry of entries) this.upsert(entry);
+      for (const doc of docs) this.upsertExternal(doc);
+    })();
+    writeManifest(currentManifest());
+  }
+
+  /**
+   * Bring the vault half of the index up to date, re-reading only what changed.
+   *
+   * A full rebuild takes seven seconds over 13MB, which is fine to run by hand
+   * and far too slow to run on a schedule or anywhere near an interactive turn.
+   * Comparing size and mtime against the manifest turns the common case, where
+   * nothing or almost nothing changed, into a sub-second walk that reads no
+   * bodies at all.
+   *
+   * The entries are left alone: they are rewritten through the store, which
+   * updates the index as it goes, so only Noa's own notes drift.
+   */
+  refresh(): { added: number; updated: number; removed: number; unchanged: number } {
+    const previous = readManifest();
+    const current: Manifest = {};
+    const changed: ExternalDoc[] = [];
+    let added = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    // Read outside the transaction: file I/O should not hold a write lock.
+    for (const stat of scanExternalNotes()) {
+      current[stat.path] = { mtimeMs: stat.mtimeMs, size: stat.size };
+      const before = previous[stat.path];
+      if (before !== undefined && before.mtimeMs === stat.mtimeMs && before.size === stat.size) {
+        unchanged++;
+        continue;
+      }
+      const doc = readExternalNote(stat.path);
+      if (doc === undefined) continue;
+      changed.push(doc);
+      if (before === undefined) added++;
+      else updated++;
+    }
+
+    // Anything the manifest knew about and the walk no longer sees is gone from
+    // the vault, or has stopped being a knowledge note, so it leaves the index.
+    const gone = Object.keys(previous).filter((p) => current[p] === undefined);
+
+    this.db.transaction(() => {
+      for (const doc of changed) this.upsertExternal(doc);
+      for (const path of gone) this.removeById(path);
+    })();
+
+    writeManifest(current);
+    return { added, updated, removed: gone.length, unchanged };
   }
 
   /**
@@ -184,4 +245,31 @@ export class Index {
   close(): void {
     this.db.close();
   }
+}
+
+/** The vault-note manifest: path to the size and mtime last indexed. */
+type Manifest = Record<string, { mtimeMs: number; size: number }>;
+
+function readManifest(): Manifest {
+  const path = vaultManifestPath();
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Manifest;
+  } catch {
+    return {}; // unreadable manifest costs one full re-read, not a failure
+  }
+}
+
+function writeManifest(manifest: Manifest): void {
+  const path = vaultManifestPath();
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(manifest));
+  renameSync(tmp, path);
+}
+
+function currentManifest(): Manifest {
+  const out: Manifest = {};
+  for (const s of scanExternalNotes()) out[s.path] = { mtimeMs: s.mtimeMs, size: s.size };
+  return out;
 }

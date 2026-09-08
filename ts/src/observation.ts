@@ -28,6 +28,7 @@ import { ingestTranscriptFile } from "./host/transcript.ts";
 import { appendEvidence, readEvidence } from "./record/evidence.ts";
 import { noteFault } from "./record/fault.ts";
 import { recordCall } from "./record/history.ts";
+import { shouldRefreshIndex, stampRefreshed } from "./record/refresh.ts";
 
 /** The self-improvement loop runs automatically only when the backend is on. */
 export function shouldTriggerDetection(appended: number): boolean {
@@ -48,6 +49,12 @@ export function runObservation(raw: string): string {
     } else if (event.kind === "SessionEnd") {
       const appended = observeSession(event);
       if (shouldTriggerDetection(appended)) spawnDetection();
+      if (shouldRefreshIndex()) {
+        // Stamp before spawning: a refresh that crashes must not make every
+        // subsequent session end retry it immediately.
+        stampRefreshed();
+        spawnCli("refresh", "observation.refresh");
+      }
     }
   } catch (error) {
     noteFault("observation", error);
@@ -62,16 +69,22 @@ export function runObservation(raw: string): string {
  * raised (D2).
  */
 function spawnDetection(): void {
+  spawnCli("detect", "observation.detect");
+}
+
+/** Run one CLI command detached and return at once. Fail-open: a spawn error is
+ * noted, never raised (D2). */
+function spawnCli(command: string, faultStage: string): void {
   try {
     const cli = resolve(import.meta.dir, "cli.ts");
-    const child = Bun.spawn([process.execPath, cli, "detect"], {
+    const child = Bun.spawn([process.execPath, cli, command], {
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
     });
     child.unref(); // do not keep the hook process alive waiting on it
   } catch (error) {
-    noteFault("observation.detect", error);
+    noteFault(faultStage, error);
   }
 }
 

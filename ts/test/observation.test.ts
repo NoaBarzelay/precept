@@ -143,3 +143,20 @@ test("a hard rule with neither history nor example degrades to guidance", () => 
   expect(entry!.tier).toBe("soft"); // no demonstrated match, so it steers
   expect(entry!.check).toBeUndefined();
 });
+
+test("SessionEnd kicks a vault refresh, throttled, without needing evidence", async () => {
+  // The refresh must not be gated on new evidence: Noa editing her own notes in
+  // Obsidian is exactly the change that has to be picked up, and it produces no
+  // evidence and no tool calls at all.
+  const { shouldRefreshIndex, stampRefreshed } = await import("../src/record/refresh.ts");
+  process.env.PRECEPT_REFRESH_INTERVAL_MINUTES = "30";
+  try {
+    const t0 = new Date("2026-09-08T10:00:00Z");
+    expect(shouldRefreshIndex(t0)).toBe(true);
+    stampRefreshed(t0);
+    expect(shouldRefreshIndex(new Date("2026-09-08T10:05:00Z"))).toBe(false);
+    expect(shouldRefreshIndex(new Date("2026-09-08T10:45:00Z"))).toBe(true);
+  } finally {
+    delete process.env.PRECEPT_REFRESH_INTERVAL_MINUTES;
+  }
+});

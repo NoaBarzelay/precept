@@ -78,6 +78,20 @@ export function projectionPath(): string {
   return join(stateDir(), "policies.json");
 }
 
+/**
+ * Manifest of the vault notes in the index: path to size and mtime. Lets a
+ * refresh re-read only what changed instead of rebuilding 13MB every time.
+ * Derived and rebuildable; deleting it costs one full rebuild.
+ */
+export function vaultManifestPath(): string {
+  return join(stateDir(), "vault-index.json");
+}
+
+/** Stamp recording when the background vault refresh last ran. */
+export function refreshStampPath(): string {
+  return join(stateDir(), "vault-refresh.stamp");
+}
+
 /** The append-only evidence log (operational state). */
 export function evidenceLogPath(): string {
   return join(stateDir(), "evidence.jsonl");

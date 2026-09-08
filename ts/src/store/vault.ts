@@ -22,6 +22,7 @@
 import {
   existsSync,
   mkdirSync,
+  statSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -342,28 +343,70 @@ function frontmatterTitle(head: string, path: string): string {
   return raw.replace(/^["']|["']$/g, "");
 }
 
+/** A note's identity and version, without its body. */
+export interface ExternalStat {
+  readonly path: string;
+  readonly mtimeMs: number;
+  readonly size: number;
+}
+
+/**
+ * Every knowledge note in the vault that Precept did not write, as path plus
+ * size and mtime.
+ *
+ * Deciding whether a file qualifies needs its frontmatter, so this reads the
+ * head of each file but never the whole body. That is the difference between a
+ * sub-second scan and a seven-second one, and it is what makes an incremental
+ * refresh worth doing: the walk is cheap, only changed files are read in full.
+ */
+export function scanExternalNotes(): ExternalStat[] {
+  const vault = vaultDir();
+  if (vault === undefined) return [];
+  const out: ExternalStat[] = [];
+  for (const abs of markdownFiles(vault)) {
+    const rel = relative(vault, abs);
+    if (EXCLUDED_TOP_LEVEL.has(rel.split("/")[0] ?? "")) continue;
+    let head: string;
+    let info;
+    try {
+      info = statSync(abs);
+      head = readFileSync(abs, "utf8").slice(0, 4000);
+    } catch {
+      continue;
+    }
+    if (frontmatterType(head) !== "knowledge") continue; // `note` and untagged are hers to write, not knowledge
+    if (/^precept:$/m.test(head)) continue; // Precept's own, indexed as an entry
+    out.push({ path: rel, mtimeMs: info.mtimeMs, size: info.size });
+  }
+  return out;
+}
+
+/** Read one of her notes in full. Undefined if it is gone or no longer qualifies. */
+export function readExternalNote(path: string): ExternalDoc | undefined {
+  const vault = vaultDir();
+  if (vault === undefined) return undefined;
+  let text: string;
+  try {
+    text = readFileSync(join(vault, path), "utf8");
+  } catch {
+    return undefined;
+  }
+  const head = text.slice(0, 4000);
+  if (frontmatterType(head) !== "knowledge") return undefined;
+  if (preceptIdOf(text) !== null) return undefined;
+  return { path, title: frontmatterTitle(head, path), content: bodyOf(text) };
+}
+
 /**
  * Every knowledge note in the vault that Precept did not write. A note carrying
  * a `precept:` block is Precept's own and is indexed as an entry instead, so
  * including it here would double-index it.
  */
 export function readExternalNotes(): ExternalDoc[] {
-  const vault = vaultDir();
-  if (vault === undefined) return [];
   const out: ExternalDoc[] = [];
-  for (const abs of markdownFiles(vault)) {
-    const rel = relative(vault, abs);
-    if (EXCLUDED_TOP_LEVEL.has(rel.split("/")[0] ?? "")) continue;
-    let text: string;
-    try {
-      text = readFileSync(abs, "utf8");
-    } catch {
-      continue;
-    }
-    const head = text.slice(0, 2000);
-    if (frontmatterType(head) !== "knowledge") continue; // `note` and untagged are hers to write, not knowledge
-    if (preceptIdOf(text) !== null) continue; // Precept's own, indexed as an entry
-    out.push({ path: rel, title: frontmatterTitle(head, rel), content: bodyOf(text) });
+  for (const stat of scanExternalNotes()) {
+    const doc = readExternalNote(stat.path);
+    if (doc !== undefined) out.push(doc);
   }
   return out;
 }
