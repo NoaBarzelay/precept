@@ -25,6 +25,7 @@ import { getPending, listPending, removePending } from "./record/queue.ts";
 import { Index } from "./retrieve/index.ts";
 import { retrieve } from "./retrieve/retrieve.ts";
 import { allEntries, readCard, removeCard, writeCard } from "./store/card.ts";
+import { folderError, rescanVault } from "./store/vault.ts";
 import { withCardLock } from "./store/lock.ts";
 
 interface NoteFlags {
@@ -248,13 +249,32 @@ export function pendingCmd(): string {
 }
 
 /** Keep a pending candidate: commit it through the review gate. */
-export function keepCmd(id: string): string {
-  if (id === undefined || id === "") return "usage: precept keep <id>";
+/** Value of a `--flag value` pair in an argument list, if present. */
+function flagValue(args: readonly string[], flag: string): string | undefined {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+}
+
+export function keepCmd(id: string, folder?: string): string {
+  if (id === undefined || id === "") {
+    return "usage: precept keep <id> [--folder <vault subject folder>]";
+  }
   const p = getPending(id);
   if (p === undefined) return `no pending candidate ${id}`;
+  // Knowledge belongs in the vault, and which subject folder is a judgment call
+  // about Noa's own tree, so it is supplied rather than guessed (R1.4's
+  // always-propose-never-act rule, applied to placement).
+  if (folder !== undefined) {
+    const ferr = folderError(folder);
+    if (ferr !== null) return ferr;
+  }
   // Surface an existing near-duplicate so the reviewer can supersede it (R1.4).
   const conflicts = conflictsFor(p.candidate);
-  const { entry } = review(p.candidate, { action: "keep" });
+  const { entry } = review(
+    p.candidate,
+    { action: "keep" },
+    folder !== undefined ? { folder } : {},
+  );
   removePending(id);
   const note =
     conflicts.length > 0
@@ -321,6 +341,15 @@ export function ingestCmd(args: string[]): string {
   return appended === 0
     ? "ingested transcript; no new evidence (nothing new, or unreadable)"
     : `ingested transcript; recorded ${appended} evidence record(s)`;
+}
+
+/** Rescan the vault for Precept-written notes, repairing the id-to-path map
+ * after Noa moves or renames them in Obsidian. */
+export function rescanCmd(): string {
+  const found = rescanVault();
+  return found.length === 0
+    ? "rescanned the vault; no Precept notes found (or no vault configured)"
+    : `rescanned the vault; mapped ${found.length} note(s)`;
 }
 
 /** Run detection over recorded evidence with the configured backend. Async
@@ -394,6 +423,8 @@ export function runCli(argv: string[]): string {
       return listCmd();
     case "remove":
       return removeCmd(rest[0] ?? "");
+    case "rescan":
+      return rescanCmd();
     case "reindex":
       return reindexCmd();
     case "compile":
@@ -417,11 +448,11 @@ export function runCli(argv: string[]): string {
     case "pending":
       return pendingCmd();
     case "keep":
-      return keepCmd(rest[0] ?? "");
+      return keepCmd(rest[0] ?? "", flagValue(rest, "--folder"));
     case "dismiss":
       return dismissCmd(rest);
     default:
-      return "commands: install, uninstall, note, recall, list, remove, reindex, compile, confirm, reject, retire, supersede, firing, ingest, detect, pending, keep, dismiss";
+      return "commands: install, uninstall, note, recall, list, remove, reindex, rescan, compile, confirm, reject, retire, supersede, firing, ingest, detect, pending, keep, dismiss";
   }
 }
 

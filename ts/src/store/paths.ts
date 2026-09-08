@@ -48,6 +48,26 @@ export function claudeSettingsPath(): string {
   return join(claudeHome(), "settings.json");
 }
 
+/**
+ * The Obsidian vault root, where knowledge entries live as notes (split-by-kind
+ * placement). Unset means no vault is configured and knowledge stays a card
+ * under the catalog root, so the system still runs on a machine without one.
+ */
+export function vaultDir(): string | undefined {
+  const dir = process.env.PRECEPT_VAULT;
+  return dir === undefined || dir.trim() === "" ? undefined : dir;
+}
+
+/**
+ * The id-to-path map for vault notes. A note lives in a subject folder under a
+ * human title, not at a path derived from its id, so reading one back by id
+ * needs a map. Derived and rebuildable by scanning the vault for notes carrying
+ * a `precept:` block, so losing it costs a rescan, not data.
+ */
+export function vaultMapPath(): string {
+  return join(stateDir(), "vault-notes.json");
+}
+
 /** The derived FTS index database (rebuildable projection). */
 export function indexDbPath(): string {
   return join(stateDir(), "index.db");

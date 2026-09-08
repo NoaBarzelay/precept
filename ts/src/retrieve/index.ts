@@ -7,11 +7,11 @@
 // can surface the applicable part rather than the whole document (R2.7).
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Entry } from "../domain/entry.ts";
-import { readCard } from "../store/card.ts";
-import { entriesDir, indexDbPath } from "../store/paths.ts";
+import { allEntries } from "../store/card.ts";
+import { indexDbPath } from "../store/paths.ts";
 
 export interface Section {
   readonly anchor: string;
@@ -97,15 +97,17 @@ export class Index {
     this.db.query("DELETE FROM sections WHERE id = ?").run(id);
   }
 
-  /** Drop every row and rebuild from the cards on disk. */
+  /**
+   * Drop every row and rebuild from the catalog.
+   *
+   * This asks the store for the entries rather than listing a directory: since
+   * knowledge entries live as notes in the vault (split-by-kind placement),
+   * scanning the card directory silently indexes only the conventions and
+   * leaves every fact unretrievable, which is the whole point of the index.
+   */
   rebuild(): void {
     this.db.run("DELETE FROM sections");
-    if (!existsSync(entriesDir())) return;
-    for (const file of readdirSync(entriesDir())) {
-      if (!file.endsWith(".md") || file.startsWith(".")) continue;
-      const id = file.slice(0, -3);
-      this.upsert(readCard(id));
-    }
+    for (const entry of allEntries()) this.upsert(entry);
   }
 
   /**

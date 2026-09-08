@@ -36,7 +36,7 @@ None of the below is required for the loop to run. They deepen the learning half
 
 ### Knowledge (O2)
 
-- **Vault integration.** Governed knowledge lives as catalog cards and injects per prompt, which is the O2 mechanism. Filing into the Obsidian vault is not carried into the rebuild; revisit it, behind the same review gate, if vault-native knowledge that is browsable and wikilinked is wanted.
+- **Placement proposal.** Vault integration is built: knowledge commits as a note in an Obsidian subject folder, conventions stay as cards. Which folder is still supplied by the reviewer on `keep --folder`. Proposing the folder at review time, from the entry's own content and the vault's existing tree, is the remaining half, and it stays a proposal the reviewer confirms.
 
 ### Durability
 

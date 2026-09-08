@@ -23,7 +23,8 @@ import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Check } from "../domain/check.ts";
 import { type Entry, entryError } from "../domain/entry.ts";
-import { cardPath, entriesDir } from "./paths.ts";
+import { cardPath, entriesDir, vaultDir } from "./paths.ts";
+import { readNote, readVaultMap, writeNote } from "./vault.ts";
 
 const FENCE = "```";
 // The check block is the final block of the card (serialize always appends it
@@ -109,7 +110,15 @@ export function parse(text: string): Entry {
  * partial one. (On macOS full durability also wants F_FULLFSYNC, which the
  * stdlib does not expose; DECISIONS.md records the full recipe.)
  */
-export function writeCard(entry: Entry): string {
+export function writeCard(entry: Entry, folder?: string): string {
+  // Split by kind: knowledge is for Noa and belongs in her vault as a note in
+  // the matching subject folder; everything else is an instruction for the
+  // agent and stays a Precept card under the catalog root. A knowledge entry
+  // without a folder, or on a machine with no vault, falls back to a card, so
+  // the system still runs unconfigured.
+  if (entry.kind === "knowledge" && folder !== undefined && vaultDir() !== undefined) {
+    return writeNote(entry, folder, new Date().toISOString().slice(0, 10));
+  }
   const dir = entriesDir();
   mkdirSync(dir, { recursive: true });
   const target = cardPath(entry.id);
@@ -128,24 +137,41 @@ export function writeCard(entry: Entry): string {
   return target;
 }
 
-/** Read and validate a card by id. Throws if missing or invalid. */
+/** Read and validate an entry by id, from a card or a vault note. Throws if
+ * missing or invalid. */
 export function readCard(id: string): Entry {
-  return parse(readFileSync(cardPath(id), "utf8"));
+  const path = cardPath(id);
+  if (existsSync(path)) return parse(readFileSync(path, "utf8"));
+  const note = readNote(id);
+  if (note !== undefined) return note;
+  return parse(readFileSync(path, "utf8")); // throws the familiar ENOENT
 }
 
-/** All entry ids on disk, sorted. */
+/** All entry ids, sorted: cards under the catalog root plus mapped vault notes. */
 export function listEntryIds(): string[] {
   const dir = entriesDir();
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => f.endsWith(".md") && !f.startsWith("."))
-    .map((f) => f.slice(0, -3))
-    .sort();
+  const cards = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".md") && !f.startsWith("."))
+        .map((f) => f.slice(0, -3))
+    : [];
+  const notes = vaultDir() === undefined ? [] : Object.keys(readVaultMap());
+  return [...new Set([...cards, ...notes])].sort();
 }
 
 /** All entries on disk. */
 export function allEntries(): Entry[] {
-  return listEntryIds().map(readCard);
+  const out: Entry[] = [];
+  for (const id of listEntryIds()) {
+    // A note Noa moved or deleted in Obsidian must not wedge the whole catalog;
+    // `rescanVault` repairs the map.
+    try {
+      out.push(readCard(id));
+    } catch {
+      continue;
+    }
+  }
+  return out;
 }
 
 /** Hard-delete a card (R1.16 removal). Returns true if it existed. */

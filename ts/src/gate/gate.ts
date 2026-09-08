@@ -3,7 +3,6 @@
 // decision record. Nothing reaches the catalog except through here, which is
 // what makes approval a structural property rather than a step.
 
-import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { Candidate } from "../domain/candidate.ts";
 import {
@@ -19,8 +18,7 @@ import {
 } from "../record/decision.ts";
 import { readHistory } from "../record/history.ts";
 import { Index } from "../retrieve/index.ts";
-import { writeCard } from "../store/card.ts";
-import { cardPath } from "../store/paths.ts";
+import { listEntryIds, writeCard } from "../store/card.ts";
 
 export type Review =
   | { readonly action: "keep" }
@@ -34,6 +32,9 @@ export interface ReviewOptions {
   at?: string;
   /** Override the decision id. */
   decisionId?: string;
+  /** Vault subject folder for a knowledge entry (split-by-kind placement).
+   * Absent means the entry commits as a card under the catalog root. */
+  folder?: string;
 }
 
 export interface ReviewResult {
@@ -97,7 +98,7 @@ export function review(
   };
   appendDecision(record);
 
-  writeCard(entry);
+  writeCard(entry, opts.folder);
   const index = new Index();
   try {
     index.upsert(entry);
@@ -175,10 +176,21 @@ function slugify(content: string): string {
   return base === "" ? "entry" : base;
 }
 
+/**
+ * A free id, given the slug two different entries may well share.
+ *
+ * This asks the store for every known id rather than probing the card path.
+ * Once knowledge routes to the vault (split-by-kind placement) a committed
+ * entry may have no card at all, so a card-path probe reports a taken id as
+ * free, hands the same id to a second entry, and the second write silently
+ * replaces the first. Two near-identical candidates are exactly the case that
+ * reaches here, so the collision is common rather than theoretical.
+ */
 function uniqueId(base: string): string {
-  if (!existsSync(cardPath(base))) return base;
+  const taken = new Set(listEntryIds());
+  if (!taken.has(base)) return base;
   for (let n = 2; ; n++) {
     const candidate = `${base}-${n}`;
-    if (!existsSync(cardPath(candidate))) return candidate;
+    if (!taken.has(candidate)) return candidate;
   }
 }
