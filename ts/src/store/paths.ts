@@ -84,6 +84,12 @@ export function historyLogPath(): string {
   return join(stateDir(), "history.jsonl");
 }
 
+/** Stamp recording when the session-start backlog prompt last fired, so a
+ * queue the user is not clearing does not re-ask every session. */
+export function backlogStampPath(): string {
+  return join(stateDir(), "backlog-prompt.stamp");
+}
+
 /** The durable review queue: one file per candidate awaiting review. */
 export function pendingDir(): string {
   return join(stateDir(), "pending");

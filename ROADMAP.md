@@ -32,7 +32,6 @@ None of the below is required for the loop to run. They deepen the learning half
 ### Placement and injection
 
 - **Convention writer** (R1.7, R1.8). A convention loads through Precept's injected context rather than the host's own scoping. Write it into `.claude/rules/`, under an always-on line cap, so it loads by the mechanism its type calls for.
-- **SessionStart injection** (R1.8). A no-op until the bounded always-on set exists.
 - **Per-tool hook narrowing** (ARCHITECTURE 5.4). Install registers PreToolUse on the `*` matcher, so interception spawns on every tool call. Registering only the tools a rule references, regenerated on `compile`, is what makes most turns invoke Precept zero times.
 
 ### Knowledge (O2)

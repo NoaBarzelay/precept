@@ -21,7 +21,10 @@ const ALLOWED: Record<string, string[]> = {
   eval: ["domain", "store", "retrieve", "record"],
   // Orchestration entrypoints.
   cli: ["domain", "store", "retrieve", "record", "gate", "infer", "host", "projection"],
-  injection: ["domain", "store", "retrieve", "host"],
+  // injection reads the review queue on SessionStart to report the backlog,
+  // and the queue is operational state owned by `record`; interception already
+  // imports record for the same reason (fault recording).
+  injection: ["domain", "store", "retrieve", "host", "record"],
   interception: ["domain", "host", "record", "projection"],
   observation: ["domain", "host", "record"],
 };
