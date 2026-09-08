@@ -4,7 +4,7 @@ State of the build so another session can continue it. The product spec is [../R
 
 The TypeScript build is now the whole system: it is installed as the live Claude Code hooks, and the original Python was removed. CI runs the TypeScript suite.
 
-As of this writing: **198 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI green.**
+As of this writing: **199 tests passing, offline; `tsc --noEmit` clean; the dependency-rule and interception fitness functions green; CI green.**
 
 ## How to resume
 

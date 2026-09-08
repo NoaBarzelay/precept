@@ -19,7 +19,7 @@ import {
   rmSync,
   writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { Check } from "../domain/check.ts";
 import { type Entry, entryError } from "../domain/entry.ts";
@@ -116,8 +116,17 @@ export function writeCard(entry: Entry, folder?: string): string {
   // agent and stays a Precept card under the catalog root. A knowledge entry
   // without a folder, or on a machine with no vault, falls back to a card, so
   // the system still runs unconfigured.
-  if (entry.kind === "knowledge" && folder !== undefined && vaultDir() !== undefined) {
-    return writeNote(entry, folder, new Date().toISOString().slice(0, 10));
+  if (entry.kind === "knowledge" && vaultDir() !== undefined) {
+    // An entry already living in the vault stays there. Without this, every
+    // lifecycle write that does not carry a folder (retire, supersede, confirm,
+    // reject) would fall through and re-materialize the entry as a second copy
+    // as a card, leaving two homes for one id.
+    const existing = readVaultMap()[entry.id];
+    const target = folder ?? (existing === undefined ? undefined : dirname(existing));
+    if (target !== undefined) {
+      const title = existing === undefined ? undefined : basename(existing, ".md");
+      return writeNote(entry, target, new Date().toISOString().slice(0, 10), title);
+    }
   }
   const dir = entriesDir();
   mkdirSync(dir, { recursive: true });

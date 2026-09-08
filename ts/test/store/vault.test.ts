@@ -78,15 +78,20 @@ test("the body survives without the Sources section leaking into content", () =>
 // --- Placement and I/O -----------------------------------------------------
 
 import { afterEach, beforeEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { folderError, readNote, rescanVault, writeNote } from "../../src/store/vault.ts";
 
 let vault: string;
 let state: string;
+let home: string;
 
 beforeEach(() => {
+  // PRECEPT_HOME must be set too: anything reaching listEntryIds or allEntries
+  // would otherwise read the real catalog on this machine.
+  home = mkdtempSync(join(tmpdir(), "precept-cards-"));
+  process.env.PRECEPT_HOME = home;
   vault = mkdtempSync(join(tmpdir(), "precept-vault-"));
   state = mkdtempSync(join(tmpdir(), "precept-state-"));
   process.env.PRECEPT_VAULT = vault;
@@ -96,6 +101,8 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.PRECEPT_VAULT;
   delete process.env.PRECEPT_STATE_DIR;
+  delete process.env.PRECEPT_HOME;
+  rmSync(home, { recursive: true, force: true });
   rmSync(vault, { recursive: true, force: true });
   rmSync(state, { recursive: true, force: true });
 });
@@ -231,4 +238,19 @@ test("a vault note is retrievable, not just stored", async () => {
   } finally {
     index.close();
   }
+});
+
+test("a lifecycle write keeps a vault entry in the vault", async () => {
+  // Regression: retire/supersede/confirm call writeCard with no folder. Without
+  // remembering where the note already lives, each of those would write a
+  // second copy as a card and leave one id with two homes.
+  const { writeCard, listEntryIds } = await import("../../src/store/card.ts");
+  const e = entry();
+  const path = writeNote(e, FOLDER, "2026-09-08");
+
+  writeCard({ ...e, version: 2, status: "retired" });
+
+  expect(listEntryIds()).toEqual([e.id]); // one home, not two
+  expect(existsSync(join(home, "entries", `${e.id}.md`))).toBe(false);
+  expect(readFileSync(path, "utf8")).toContain("status: retired");
 });
