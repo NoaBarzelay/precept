@@ -63,6 +63,12 @@ export function evidenceLogPath(): string {
   return join(stateDir(), "evidence.jsonl");
 }
 
+/** The append-only ledger of evidence already sent to the model, so detection
+ * never pays for the same window twice. */
+export function proposedLogPath(): string {
+  return join(stateDir(), "proposed.jsonl");
+}
+
 /** The append-only decision-record log (operational state, N6). */
 export function decisionsLogPath(): string {
   return join(stateDir(), "decisions.jsonl");
