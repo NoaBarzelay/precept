@@ -103,7 +103,7 @@ export function serializeNote(entry: Entry, today: string, title?: string): stri
   const front: Record<string, unknown> = {
     type: "knowledge",
     updated: today,
-    title: title ?? titleOf(entry.content),
+    title: title === undefined ? titleOf(entry.content) : safeTitle(title),
     date: entry.validity.validFrom,
     topic: entry.validity.condition,
     purpose: "Knowledge Precept recorded from Noa's sessions and injects when relevant.",
@@ -177,6 +177,21 @@ export function folderError(folder: Folder): string | null {
   return null;
 }
 
+/**
+ * A title reduced to a safe filename. A path separator in a title silently
+ * becomes a directory: the title "The Hq/Hkv identity is already published"
+ * created a folder called "The Hq" in the vault. `titleOf` already strips these
+ * from derived titles; an explicit one has to be held to the same rule.
+ */
+export function safeTitle(title: string): string {
+  const clean = title
+    .replace(/[/\\]/g, " ")
+    .replace(/^\.+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean === "" ? "untitled" : clean;
+}
+
 /** Where a note for this entry goes, given its folder and an optional explicit
  * title. Two entries whose content opens the same way derive the same title, so
  * a caller that keeps both must name at least one of them. */
@@ -186,7 +201,8 @@ export function notePath(
   entry: Entry,
   title?: string,
 ): string {
-  return join(vault, folder, `${title ?? titleOf(entry.content)}.md`);
+  const name = title === undefined ? titleOf(entry.content) : safeTitle(title);
+  return join(vault, folder, `${name}.md`);
 }
 
 /** The id-to-path map: entry id to a vault-relative note path. */

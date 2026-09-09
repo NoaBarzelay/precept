@@ -4,7 +4,7 @@
 
 import type { Candidate } from "./domain/candidate.ts";
 import { conflictsAmong } from "./domain/currency.ts";
-import {
+import { ENTRY_KINDS, type EntryKind,
   confirmOnce,
   type Entry,
   narrowOnReject,
@@ -259,9 +259,22 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
   return i === -1 ? undefined : args[i + 1];
 }
 
-export function keepCmd(id: string, folder?: string, title?: string): string {
+export function keepCmd(
+  id: string,
+  folder?: string,
+  title?: string,
+  kind?: string,
+): string {
   if (id === undefined || id === "") {
-    return "usage: precept keep <id> [--folder <vault subject folder>] [--title <note title>]";
+    return "usage: precept keep <id> [--kind <entry kind>] [--folder <vault subject folder>] [--title <note title>]";
+  }
+  // The detector proposes a kind and gets it wrong in a way that matters:
+  // knowledge routes to Noa's vault and a convention stays a Precept card, so a
+  // rule typed as knowledge lands in her Second Brain as though it were a fact.
+  // Overriding it here puts the decision beside the other placement decisions,
+  // which are supplied rather than guessed for the same reason.
+  if (kind !== undefined && !ENTRY_KINDS.includes(kind as EntryKind)) {
+    return `unknown kind '${kind}' (one of: ${ENTRY_KINDS.join(", ")})`;
   }
   const p = getPending(id);
   if (p === undefined) return `no pending candidate ${id}`;
@@ -273,9 +286,11 @@ export function keepCmd(id: string, folder?: string, title?: string): string {
     if (ferr !== null) return ferr;
   }
   // Surface an existing near-duplicate so the reviewer can supersede it (R1.4).
-  const conflicts = conflictsFor(p.candidate);
+  const candidate =
+    kind === undefined ? p.candidate : { ...p.candidate, kind: kind as EntryKind };
+  const conflicts = conflictsFor(candidate);
   const { entry } = review(
-    p.candidate,
+    candidate,
     { action: "keep" },
     {
       ...(folder !== undefined ? { folder } : {}),
@@ -472,7 +487,12 @@ export function runCli(argv: string[]): string {
     case "pending":
       return pendingCmd();
     case "keep":
-      return keepCmd(rest[0] ?? "", flagValue(rest, "--folder"), flagValue(rest, "--title"));
+      return keepCmd(
+        rest[0] ?? "",
+        flagValue(rest, "--folder"),
+        flagValue(rest, "--title"),
+        flagValue(rest, "--kind"),
+      );
     case "dismiss":
       return dismissCmd(rest);
     default:

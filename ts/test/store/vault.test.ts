@@ -254,3 +254,18 @@ test("a lifecycle write keeps a vault entry in the vault", async () => {
   expect(existsSync(join(home, "entries", `${e.id}.md`))).toBe(false);
   expect(readFileSync(path, "utf8")).toContain("status: retired");
 });
+
+test("a title containing a path separator cannot create a directory", () => {
+  // Regression: the explicit title "The Hq/Hkv identity is already published"
+  // made a folder called "The Hq" in the vault. titleOf already strips these
+  // from derived titles; an explicit one is held to the same rule.
+  const path = writeNote(entry(), FOLDER, "2026-09-09", "The Hq/Hkv identity is published");
+  expect(path).toBe(join(vault, FOLDER, "The Hq Hkv identity is published.md"));
+  expect(existsSync(join(vault, FOLDER, "The Hq"))).toBe(false);
+  expect(readFileSync(path, "utf8")).toContain("title: The Hq Hkv identity is published");
+});
+
+test("a title that is only separators still yields a file", () => {
+  const path = writeNote(entry({ id: "odd" }), FOLDER, "2026-09-09", "///");
+  expect(path).toBe(join(vault, FOLDER, "untitled.md"));
+});

@@ -14,8 +14,23 @@ export function catalogDir(): string {
   return process.env.PRECEPT_HOME ?? join(homedir(), ".precept");
 }
 
-/** The directory holding entry cards. */
+/**
+ * The directory holding entry cards: the rules and conventions that steer
+ * Claude.
+ *
+ * When a vault is configured these live under its `Claude/` folder, because
+ * that is where Noa keeps everything that instructs Claude and she wants them
+ * nowhere else. Filing a rule into a subject folder puts an instruction among
+ * her research, and filing it outside the vault entirely hides it from her.
+ *
+ * `PRECEPT_HOME` still wins when set, which keeps tests hermetic and keeps the
+ * system working on a machine with no vault at all.
+ */
 export function entriesDir(): string {
+  if (process.env.PRECEPT_HOME === undefined) {
+    const vault = vaultDir();
+    if (vault !== undefined) return join(vault, "Claude", "Precept");
+  }
   return join(catalogDir(), "entries");
 }
 
