@@ -108,6 +108,35 @@ function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+/**
+ * Tags the host uses to deliver system-authored content inside a `user` turn.
+ * None of it is typed by Noa, so none of it may source an entry.
+ */
+const INJECTED_TAGS = [
+  "task-notification",
+  "system-reminder",
+  "ci-monitor-event",
+  "command-name",
+  "command-message",
+  "command-args",
+  "local-command-stdout",
+  "local-command-stderr",
+  "user-prompt-submit-hook",
+] as const;
+
+const INJECTED_BLOCK = new RegExp(
+  `<(${INJECTED_TAGS.join("|")})\\b[^>]*>[\\s\\S]*?<\\/\\1>|<(?:${INJECTED_TAGS.join("|")})\\b[^>]*\\/?>`,
+  "gi",
+);
+
+/**
+ * Remove system-injected blocks from a turn, leaving only what the user typed.
+ * Returns "" when the turn was nothing but injected content.
+ */
+export function stripInjected(text: string): string {
+  return text.replace(INJECTED_BLOCK, "").trim();
+}
+
 /** Parse the transcript JSONL, one narrowed entry per line, skipping junk. */
 export function parseTranscript(raw: string): TranscriptEntry[] {
   const out: TranscriptEntry[] = [];
@@ -138,12 +167,19 @@ function narrow(o: RawLine): TranscriptEntry {
   const cwd = str(o.cwd);
   const sidechain = o.isSidechain === true;
   if (role === "user") {
-    const { text, isToolResult } = userText(msg.content);
+    const { text: raw, isToolResult } = userText(msg.content);
+    // The host delivers system-authored content on the `user` role: background
+    // task notifications, system reminders, slash-command expansions, hook
+    // output. Left in, Precept reads them as things Noa typed, and a research
+    // agent finishing in the background becomes a "correction" she never made.
+    // Stripping rather than discarding keeps the turn where she wrapped her own
+    // words around one of these blocks.
+    const text = stripInjected(raw);
     return {
       role: "user",
       text,
-      // Provenance gate: a real human turn carries text and is neither a tool
-      // result nor a subagent's synthesized prompt.
+      // Provenance gate: a real human turn carries text she actually typed and
+      // is neither a tool result nor a subagent's synthesized prompt.
       humanTyped: text !== "" && !isToolResult && !sidechain,
       writes: [],
       ...(at !== undefined ? { at } : {}),

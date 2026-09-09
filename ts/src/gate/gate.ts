@@ -35,6 +35,9 @@ export interface ReviewOptions {
   /** Vault subject folder for a knowledge entry (split-by-kind placement).
    * Absent means the entry commits as a card under the catalog root. */
   folder?: string;
+  /** Note title, which is also its filename. Absent derives one from the
+   * content, which is only readable when the content opens with a heading. */
+  title?: string;
 }
 
 export interface ReviewResult {
@@ -98,7 +101,7 @@ export function review(
   };
   appendDecision(record);
 
-  writeCard(entry, opts.folder);
+  writeCard(entry, opts.folder, opts.title);
   const index = new Index();
   try {
     index.upsert(entry);

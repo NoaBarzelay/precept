@@ -259,9 +259,9 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
   return i === -1 ? undefined : args[i + 1];
 }
 
-export function keepCmd(id: string, folder?: string): string {
+export function keepCmd(id: string, folder?: string, title?: string): string {
   if (id === undefined || id === "") {
-    return "usage: precept keep <id> [--folder <vault subject folder>]";
+    return "usage: precept keep <id> [--folder <vault subject folder>] [--title <note title>]";
   }
   const p = getPending(id);
   if (p === undefined) return `no pending candidate ${id}`;
@@ -277,7 +277,10 @@ export function keepCmd(id: string, folder?: string): string {
   const { entry } = review(
     p.candidate,
     { action: "keep" },
-    folder !== undefined ? { folder } : {},
+    {
+      ...(folder !== undefined ? { folder } : {}),
+      ...(title !== undefined ? { title } : {}),
+    },
   );
   removePending(id);
   const note =
@@ -469,7 +472,7 @@ export function runCli(argv: string[]): string {
     case "pending":
       return pendingCmd();
     case "keep":
-      return keepCmd(rest[0] ?? "", flagValue(rest, "--folder"));
+      return keepCmd(rest[0] ?? "", flagValue(rest, "--folder"), flagValue(rest, "--title"));
     case "dismiss":
       return dismissCmd(rest);
     default:

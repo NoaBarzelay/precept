@@ -110,7 +110,7 @@ export function parse(text: string): Entry {
  * partial one. (On macOS full durability also wants F_FULLFSYNC, which the
  * stdlib does not expose; DECISIONS.md records the full recipe.)
  */
-export function writeCard(entry: Entry, folder?: string): string {
+export function writeCard(entry: Entry, folder?: string, title?: string): string {
   // Split by kind: knowledge is for Noa and belongs in her vault as a note in
   // the matching subject folder; everything else is an instruction for the
   // agent and stays a Precept card under the catalog root. A knowledge entry
@@ -124,8 +124,10 @@ export function writeCard(entry: Entry, folder?: string): string {
     const existing = readVaultMap()[entry.id];
     const target = folder ?? (existing === undefined ? undefined : dirname(existing));
     if (target !== undefined) {
-      const title = existing === undefined ? undefined : basename(existing, ".md");
-      return writeNote(entry, target, new Date().toISOString().slice(0, 10), title);
+      // An explicit title wins; otherwise keep the filename the note already
+      // has, so a lifecycle rewrite never renames Noa's file.
+      const name = title ?? (existing === undefined ? undefined : basename(existing, ".md"));
+      return writeNote(entry, target, new Date().toISOString().slice(0, 10), name);
     }
   }
   const dir = entriesDir();
